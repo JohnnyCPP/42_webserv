@@ -1,6 +1,6 @@
 # Webserv
 
-![image](./resources/42_madrid.jpg)
+![image](./resource/42_madrid.jpg)
 
 > 42 Madrid is an academy for values, attitude and learning "hard and soft skills" in the digital environment.
 
