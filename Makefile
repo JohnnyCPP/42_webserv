@@ -1,46 +1,103 @@
-NAME		:= webserv
+NAME			:= webserv
 
 
-CXX			:= c++
-CXXFLAGS	:= -Wall -Wextra -Werror -std=c++98
-DEPFLAGS	:= -MMD -MP
-
-SRC_DIR		:= src
-INC_DIR		:= include
-OBJ_DIR		:= obj
-
-SRCS		:= $(shell find $(SRC_DIR) -name '*.cpp')
-OBJS		:= $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(SRCS))
-DEPS		:= $(OBJS:.o=.d)
-
-INCLUDES	:= -I$(INC_DIR)
+CXX				:= c++
+CXXFLAGS		:= -Wall -Wextra -Werror -std=c++98
+DEPFLAGS		:= -MMD -MP
+DEBUG_SYMBOLS	:= -g3
 
 
-GREEN		:= \033[0;32m
-CYAN		:= \033[0;36m
-RESET		:= \033[0m
+SANITIZE_FLAGS	:= -fsanitize=address
+VALGRIND_FLAGS	:= --track-origins=yes -s --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=all
+
+
+SRC_DIR			:= ./src/
+INC_DIR			:= ./include/
+OBJ_DIR			:= ./obj/
+
+
+ROOT_SRC_FILES	:=	ws_main.cpp
+
+
+ROOT_SRCS		:= $(addprefix ${SRC_DIR}, ${ROOT_SRC_FILES})
+
+
+SRC_FILES		:=	${ROOT_SRCS}
+
+
+# "patsubst": pattern substitution
+# parameters: pattern, replacement, text
+#
+# pattern: the pattern to match. Supports wildcards
+# replacement: the string to replace the pattern with. By using wildcards,
+#              Make keeps the original text matched by the same
+#              wildcard in the pattern
+# text: the list of strings on which the substitution will be performed
+OBJ_FILES		:= ${patsubst ${SRC_DIR}%.cpp, ${OBJ_DIR}%.o, ${SRC_FILES}}
+DEPS			:= $(OBJ_FILES:.o=.d)
+
+
+INCLUDES		:= -I $(INC_DIR)
+
+
+GREEN			:= \033[0;32m
+CYAN			:= \033[0;36m
+RESET			:= \033[0m
+
 
 all: $(NAME)
 
-$(NAME): $(OBJS)
-	@$(CXX) $(CXXFLAGS) $(OBJS) -o $(NAME)
+
+$(NAME): $(OBJ_FILES)
+	@$(CXX) $(CXXFLAGS) $(OBJ_FILES) -o $(NAME)
 	@printf "$(GREEN)==> Built $(NAME)$(RESET)\n"
 
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
+
+$(OBJ_DIR)%.o: $(SRC_DIR)%.cpp
 	@mkdir -p $(dir $@)
 	@printf "$(CYAN)Compiling$(RESET) $<\n"
 	@$(CXX) $(CXXFLAGS) $(DEPFLAGS) $(INCLUDES) -c $< -o $@
 
+
 clean:
+	@rm -f ${OBJ_FILES}
 	@rm -rf $(OBJ_DIR)
 	@printf "$(GREEN)==> Cleaned object files$(RESET)\n"
+
 
 fclean: clean
 	@rm -f $(NAME)
 	@printf "$(GREEN)==> Removed $(NAME)$(RESET)\n"
 
+
 re: fclean all
+
+
+sanitize: ${OBJ_FILES}
+	@${CXX} ${CXXFLAGS} ${SANITIZE_FLAGS} ${OBJ_FILES} -o ${NAME}
+	@echo "CPP compiler's sanitizer has been added to debug memory issues."
+
+
+valgrind:
+	@valgrind ${VALGRIND_FLAGS} ./${NAME}
+
+
+gdb:
+	@gdb ./${NAME}
+
+
+help:
+	@echo "Available targets:"
+	@echo "    all            - Build the project (default)"
+	@echo "    clean          - Remove object files"
+	@echo "    fclean         - Remove object files and the executable"
+	@echo "    re             - Rebuild the project"
+	@echo "    sanitize       - Build with address sanitizer for debugging"
+	@echo "    valgrind       - Run the program with valgrind"
+	@echo "    gdb            - Run the program with gdb"
+
 
 -include $(DEPS)
 
-.PHONY: all clean fclean re
+
+.PHONY: all clean fclean re sanitize valgrind gdb help
