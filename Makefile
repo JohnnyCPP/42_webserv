@@ -16,7 +16,8 @@ INC_DIR			:= ./include/
 OBJ_DIR			:= ./obj/
 
 
-ROOT_SRC_FILES	:=	ws_main.cpp
+ROOT_SRC_FILES	:=	ws_main.cpp \
+					ws_socket.cpp
 
 
 ROOT_SRCS		:= $(addprefix ${SRC_DIR}, ${ROOT_SRC_FILES})
