@@ -15,6 +15,7 @@
 # include <poll.h>
 
 # include "Constants.hpp"
+# include "Structures.hpp"
 # include "Prototypes.hpp"
 
 #endif

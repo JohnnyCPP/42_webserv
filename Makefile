@@ -17,7 +17,8 @@ OBJ_DIR			:= ./obj/
 
 
 ROOT_SRC_FILES	:=	ws_main.cpp \
-					ws_socket.cpp
+					ws_socket.cpp \
+					ws_request.cpp
 
 
 ROOT_SRCS		:= $(addprefix ${SRC_DIR}, ${ROOT_SRC_FILES})
