@@ -14,18 +14,20 @@ VALGRIND_FLAGS	:= --track-origins=yes -s --leak-check=full --show-leak-kinds=all
 SRC_DIR			:= ./src/
 INC_DIR			:= ./include/
 OBJ_DIR			:= ./obj/
+CONF_DIR		:= ${SRC_DIR}config/
 
 
-ROOT_SRC_FILES	:=	main.cpp \
-					LocationConfig.cpp \
+ROOT_SRC_FILES	:=	main.cpp
+CONF_SRC_FILES	:=	LocationConfig.cpp \
 					ServerConfig.cpp \
 					Config.cpp
 
-
 ROOT_SRCS		:= $(addprefix ${SRC_DIR}, ${ROOT_SRC_FILES})
+CONF_SRCS		:= $(addprefix ${CONF_DIR}, ${CONF_SRC_FILES})
 
 
-SRC_FILES		:=	${ROOT_SRCS}
+SRC_FILES		:=	${ROOT_SRCS} \
+					${CONF_SRCS}
 
 
 # "patsubst": pattern substitution
