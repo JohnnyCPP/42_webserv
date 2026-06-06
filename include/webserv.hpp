@@ -14,8 +14,13 @@
 # include <unistd.h>
 # include <poll.h>
 
-# include "Constants.hpp"
+
+// TODO: remove this header file //
+// ############################# //
 # include "Structures.hpp"
-# include "Prototypes.hpp"
+
+
+# include "constants.hpp"
+# include "prototypes.hpp"
 
 #endif

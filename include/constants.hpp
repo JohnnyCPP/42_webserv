@@ -1,5 +1,5 @@
-#ifndef WS_CONSTANTS_HPP
-# define WS_CONSTANTS_HPP
+#ifndef CONSTANTS_HPP
+# define CONSTANTS_HPP
 
 namespace Http
 {

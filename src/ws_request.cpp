@@ -1,4 +1,4 @@
-#include "Webserv.hpp"
+#include "webserv.hpp"
 
 static bool	ws_method_is_well_formed(const std::string &method)
 {
