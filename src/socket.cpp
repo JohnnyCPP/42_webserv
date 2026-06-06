@@ -1,6 +1,6 @@
 #include "webserv.hpp"
 
-int	ws_set_nonblocking(int fd)
+int	set_nonblocking(int fd)
 {
 	int	flags;
 
@@ -14,7 +14,7 @@ int	ws_set_nonblocking(int fd)
 	return (0);
 }
 
-int	ws_create_listen_socket(const std::string &host, int port)
+int	create_listen_socket(const std::string &host, int port)
 {
 	struct addrinfo		hints;
 	struct addrinfo		*res;
@@ -63,14 +63,14 @@ int	ws_create_listen_socket(const std::string &host, int port)
 
 	freeaddrinfo(res);
 
-	if (listen(sockfd, Config::CONNECTION_BACKLOG) == -1)
+	if (listen(sockfd, WebServ::CONNECTION_BACKLOG) == -1)
 	{
 		std::cerr << "[webserv] listen: " << std::strerror(errno) << std::endl;
 		close(sockfd);
 		return (-1);
 	}
 
-	if (ws_set_nonblocking(sockfd) == -1)
+	if (set_nonblocking(sockfd) == -1)
 	{
 		std::cerr << "[webserv] fcntl: " << std::strerror(errno) << std::endl;
 		close(sockfd);

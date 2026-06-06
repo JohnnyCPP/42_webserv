@@ -1,7 +1,7 @@
 #ifndef CONSTANTS_HPP
 # define CONSTANTS_HPP
 
-namespace Http
+namespace WebServ
 {
 	const size_t	MAX_BODY_SIZE = 1048576; // 1MB
 	const int		DEFAULT_PORT = 8080;
@@ -13,7 +13,6 @@ namespace Http
 	const std::string	HTTP_VERSION = "HTTP/1.1";
 	const std::string	HTTP_VERSION_LEGACY = "HTTP/1.0";
 
-	// Status codes relevant to request-line parsing.
 	const int	OK = 200;
 	const int	BAD_REQUEST = 400;
 	const int	METHOD_NOT_ALLOWED = 405;
@@ -22,10 +21,7 @@ namespace Http
 	// Returned by the parser when the buffer does not yet hold a full
 	// request line (no CRLF seen): the event loop should recv() more data.
 	const int	REQUEST_INCOMPLETE = -1;
-}
 
-namespace Config
-{
 	const char* const	DEFAULT_CONFIG_PATH = "./config/default.conf";
 	const int			MAX_LOCATIONS = 100;
 	const int			CONNECTION_BACKLOG = 128;

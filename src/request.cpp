@@ -1,6 +1,6 @@
 #include "webserv.hpp"
 
-static bool	ws_method_is_well_formed(const std::string &method)
+static bool	method_is_well_formed(const std::string &method)
 {
 	std::string::size_type	i;
 
@@ -14,19 +14,19 @@ static bool	ws_method_is_well_formed(const std::string &method)
 	return (true);
 }
 
-static int	ws_check_version(const std::string &version)
+static int	check_version(const std::string &version)
 {
-	if (version == Http::HTTP_VERSION || version == Http::HTTP_VERSION_LEGACY)
-		return (Http::OK);
+	if (version == WebServ::HTTP_VERSION || version == WebServ::HTTP_VERSION_LEGACY)
+		return (WebServ::OK);
 	if (version.size() == 8 && version.compare(0, 5, "HTTP/") == 0
 		&& version[5] >= '0' && version[5] <= '9'
 		&& version[6] == '.'
 		&& version[7] >= '0' && version[7] <= '9')
-		return (Http::VERSION_NOT_SUPPORTED);
-	return (Http::BAD_REQUEST);
+		return (WebServ::VERSION_NOT_SUPPORTED);
+	return (WebServ::BAD_REQUEST);
 }
 
-static int	ws_assign_path(const std::string &target, t_request_line &out)
+static int	assign_path(const std::string &target, t_request_line &out)
 {
 	std::string::size_type	q;
 
@@ -42,11 +42,11 @@ static int	ws_assign_path(const std::string &target, t_request_line &out)
 		out.query = target.substr(q + 1);
 	}
 	if (out.path.empty() || out.path[0] != '/')
-		return (Http::BAD_REQUEST);
-	return (Http::OK);
+		return (WebServ::BAD_REQUEST);
+	return (WebServ::OK);
 }
 
-int	ws_parse_request_line(const std::string &raw, t_request_line &out,
+int	parse_request_line(const std::string &raw, t_request_line &out,
 		size_t &consumed)
 {
 	std::string::size_type	eol;
@@ -57,34 +57,34 @@ int	ws_parse_request_line(const std::string &raw, t_request_line &out,
 	int						status;
 
 	consumed = 0;
-	eol = raw.find(Http::CRLF);
+	eol = raw.find(WebServ::CRLF);
 	if (eol == std::string::npos)
-		return (Http::REQUEST_INCOMPLETE);
+		return (WebServ::REQUEST_INCOMPLETE);
 	line = raw.substr(0, eol);
 
 	sp1 = line.find(' ');
 	if (sp1 == std::string::npos)
-		return (Http::BAD_REQUEST);
+		return (WebServ::BAD_REQUEST);
 	sp2 = line.find(' ', sp1 + 1);
 	if (sp2 == std::string::npos)
-		return (Http::BAD_REQUEST);
+		return (WebServ::BAD_REQUEST);
 
 	out.method = line.substr(0, sp1);
 	target = line.substr(sp1 + 1, sp2 - sp1 - 1);
 	out.version = line.substr(sp2 + 1);
 
 	if (out.version.find(' ') != std::string::npos)
-		return (Http::BAD_REQUEST);
-	if (!ws_method_is_well_formed(out.method))
-		return (Http::BAD_REQUEST);
+		return (WebServ::BAD_REQUEST);
+	if (!method_is_well_formed(out.method))
+		return (WebServ::BAD_REQUEST);
 
-	status = ws_assign_path(target, out);
-	if (status != Http::OK)
+	status = assign_path(target, out);
+	if (status != WebServ::OK)
 		return (status);
-	status = ws_check_version(out.version);
-	if (status != Http::OK)
+	status = check_version(out.version);
+	if (status != WebServ::OK)
 		return (status);
 
-	consumed = eol + Http::CRLF.size();
-	return (Http::OK);
+	consumed = eol + WebServ::CRLF.size();
+	return (WebServ::OK);
 }

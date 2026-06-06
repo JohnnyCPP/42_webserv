@@ -2,9 +2,9 @@ NAME			:= webserv
 
 
 CXX				:= c++
-CXXFLAGS		:= -Wall -Wextra -Werror -std=c++98
-DEPFLAGS		:= -MMD -MP
 DEBUG_SYMBOLS	:= -g3
+CXXFLAGS		:= -Wall -Wextra -Werror -std=c++98 ${DEBUG_SYMBOLS}
+DEPFLAGS		:= -MMD -MP
 
 
 SANITIZE_FLAGS	:= -fsanitize=address
@@ -16,9 +16,10 @@ INC_DIR			:= ./include/
 OBJ_DIR			:= ./obj/
 
 
-ROOT_SRC_FILES	:=	ws_main.cpp \
-					ws_socket.cpp \
-					ws_request.cpp
+ROOT_SRC_FILES	:=	main.cpp \
+					LocationConfig.cpp \
+					ServerConfig.cpp \
+					Config.cpp
 
 
 ROOT_SRCS		:= $(addprefix ${SRC_DIR}, ${ROOT_SRC_FILES})
