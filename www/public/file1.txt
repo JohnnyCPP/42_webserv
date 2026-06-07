@@ -1,0 +1,3 @@
+This is a sample text file in the public directory.
+It can be downloaded and viewed by clients.
+Directory listing is enabled, so all files in this directory are visible.

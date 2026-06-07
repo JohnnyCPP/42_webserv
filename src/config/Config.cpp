@@ -176,6 +176,7 @@ void Config::parseServers(std::vector<std::string> const & lines)
 
 ServerConfig Config::parseServerBlock(std::vector<std::string> const & lines, size_t & index)
 {
+	std::string		location;
 	ServerConfig	server;
 	size_t			braceCount;
 
@@ -194,13 +195,15 @@ ServerConfig Config::parseServerBlock(std::vector<std::string> const & lines, si
 		{
 			if (lines[index].find("{") != std::string::npos)
 			{
+				location = lines[index];
 				++index;
-				server.addLocation(parseLocationBlock(lines, index));
+				server.addLocation(parseLocationBlock(lines, index, location));
 			}
 			else if (index + 1 < lines.size() && lines[index + 1] == "{")
 			{
+				location = lines[index];
 				index += 2;
-				server.addLocation(parseLocationBlock(lines, index));
+				server.addLocation(parseLocationBlock(lines, index, location));
 			}
 			else
 				++index;
@@ -213,18 +216,17 @@ ServerConfig Config::parseServerBlock(std::vector<std::string> const & lines, si
 	return (server);
 }
 
-LocationConfig Config::parseLocationBlock(std::vector<std::string> const & lines, size_t & index)
+LocationConfig Config::parseLocationBlock(std::vector<std::string> const & lines, size_t & index, std::string location)
 {
-	LocationConfig	location;
+	LocationConfig	locationConfig;
 	size_t			braceCount;
+	size_t			bracePos;
 	std::string		locationPath;
-	std::string		locationLine;
 
-	locationLine = lines[index - 2];
-	if (locationLine.find("{") != std::string::npos)
+	if (location.find("{") != std::string::npos)
 	{
-		size_t bracePos = locationLine.find("{");
-		locationPath = locationLine.substr(0, bracePos);
+		bracePos = location.find("{");
+		locationPath = location.substr(0, bracePos);
 		trim(locationPath);
 		if (locationPath.find("location") == 0)
 		{
@@ -233,8 +235,16 @@ LocationConfig Config::parseLocationBlock(std::vector<std::string> const & lines
 		}
 	}
 	else
-		locationPath = lines[index - 1];
-	location.setPath(locationPath);
+	{
+		locationPath = location;
+		trim(locationPath);
+		if (locationPath.find("location") == 0)
+		{
+			locationPath = locationPath.substr(8);
+			trim(locationPath);
+		}
+	}
+	locationConfig.setPath(locationPath);
 	braceCount = 1;
 	while (index < lines.size() && braceCount > 0)
 	{
@@ -246,11 +256,11 @@ LocationConfig Config::parseLocationBlock(std::vector<std::string> const & lines
 			++index;
 			continue;
 		}
-		parseLocationDirective(location, lines[index]);
+		parseLocationDirective(locationConfig, lines[index]);
 		++index;
 	}
 	++index;
-	return (location);
+	return (locationConfig);
 }
 
 void Config::parseDirective(ServerConfig & server, std::string const & line)

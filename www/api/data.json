@@ -1,0 +1,12 @@
+{
+    "name": "webserv",
+    "version": "1.0",
+    "description": "HTTP server implementation",
+    "status": "running",
+    "endpoints": [
+        "/",
+        "/public",
+        "/api",
+        "/upload"
+    ]
+}

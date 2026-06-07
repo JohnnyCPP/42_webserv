@@ -22,7 +22,7 @@ namespace WebServ
 	// request line (no CRLF seen): the event loop should recv() more data.
 	const int	REQUEST_INCOMPLETE = -1;
 
-	const char* const	DEFAULT_CONFIG_PATH = "./config/default.conf";
+	const char* const	DEFAULT_CONFIG_PATH = "./config/alt_complete.conf";
 	const int			MAX_LOCATIONS = 100;
 	const int			CONNECTION_BACKLOG = 128;
 	const int			RECV_BUFFER_SIZE = 8192;
