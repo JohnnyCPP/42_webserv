@@ -78,6 +78,16 @@ fclean: clean
 re: fclean all
 
 
+HEADERS_TEST	:= test_headers
+BODY_TEST		:= test_body
+
+test:
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) ${SRC_DIR}request.cpp ./tests/test_headers.cpp -o $(HEADERS_TEST)
+	@./$(HEADERS_TEST)
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) ${SRC_DIR}request.cpp ./tests/test_body.cpp -o $(BODY_TEST)
+	@./$(BODY_TEST)
+
+
 sanitize: ${OBJ_FILES}
 	@${CXX} ${CXXFLAGS} ${SANITIZE_FLAGS} ${OBJ_FILES} -o ${NAME}
 	@echo "CPP compiler's sanitizer has been added to debug memory issues."
@@ -105,4 +115,4 @@ help:
 -include $(DEPS)
 
 
-.PHONY: all clean fclean re sanitize valgrind gdb help
+.PHONY: all clean fclean re sanitize valgrind gdb help test
