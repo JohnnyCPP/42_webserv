@@ -26,10 +26,4 @@
 
 # include "constants.hpp"
 
-
-// TODO: remove this header file //
-// ############################# //
-# include "Structures.hpp"
-
-
 #endif
