@@ -2,7 +2,7 @@
 #include "config/Config.hpp"
 #include "config/ServerConfig.hpp"
 #include "config/LocationConfig.hpp"
-#include "WebServer.hpp"
+#include "server/WebServer.hpp"
 
 static void printConfigDetails(Config const & config)
 {

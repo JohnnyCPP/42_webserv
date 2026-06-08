@@ -1,4 +1,4 @@
-#include "Server.hpp"
+#include "server/Server.hpp"
 #include "constants.hpp"
 
 Server::Server(ServerConfig const & config) : config(config), listenFd(-1), host(""), port(0)

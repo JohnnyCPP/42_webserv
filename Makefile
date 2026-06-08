@@ -15,21 +15,24 @@ SRC_DIR			:= ./src/
 INC_DIR			:= ./include/
 OBJ_DIR			:= ./obj/
 CONF_DIR		:= ${SRC_DIR}config/
+SERV_DIR		:= ${SRC_DIR}server/
 
 
-ROOT_SRC_FILES	:=	main.cpp \
-					Server.cpp \
-					WebServer.cpp
+ROOT_SRC_FILES	:=	main.cpp
 CONF_SRC_FILES	:=	LocationConfig.cpp \
 					ServerConfig.cpp \
 					Config.cpp
+SERV_SRC_FILES	:=	Server.cpp \
+					WebServer.cpp
 
 ROOT_SRCS		:= $(addprefix ${SRC_DIR}, ${ROOT_SRC_FILES})
 CONF_SRCS		:= $(addprefix ${CONF_DIR}, ${CONF_SRC_FILES})
+SERV_SRCS		:= $(addprefix ${SERV_DIR}, ${SERV_SRC_FILES})
 
 
 SRC_FILES		:=	${ROOT_SRCS} \
-					${CONF_SRCS}
+					${CONF_SRCS} \
+					${SERV_SRCS}
 
 
 # "patsubst": pattern substitution

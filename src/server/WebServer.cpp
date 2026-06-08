@@ -1,4 +1,4 @@
-#include "WebServer.hpp"
+#include "server/WebServer.hpp"
 
 WebServer::WebServer(Config const & config) : pollFds(), running(false)
 {
