@@ -1,41 +1,12 @@
 #include "Server.hpp"
 #include "constants.hpp"
 
-Server::Server(ServerConfig const & config) : config(config), listenFd(-1), pollFds(), running(false), host(""), port(0)
-{
-}
-
-Server::Server(Server const & that) : config(that.config), listenFd(-1), pollFds(that.pollFds), running(false), host(that.host), port(0)
+Server::Server(ServerConfig const & config) : config(config), listenFd(-1), host(""), port(0)
 {
 }
 
 Server::~Server()
 {
-	size_t	i;
-
-	if (listenFd != -1)
-		close(listenFd);
-	i = 0;
-	while (i < pollFds.size())
-	{
-		if (pollFds[i].fd != -1)
-			close(pollFds[i].fd);
-		++i;
-	}
-}
-
-Server & Server::operator=(Server const & that)
-{
-	if (this != &that)
-	{
-		config = that.config;
-		listenFd = -1;
-		pollFds = that.pollFds;
-		running = false;
-		host = that.host;
-		port = 0;
-	}
-	return (*this);
 }
 
 /**
@@ -201,6 +172,8 @@ void Server::bindSocket()
 		listenAddress = config.getListenAddresses()[0];
 		parseListenAddress(listenAddress, host, port);
 	}
+	std::cout << "[Debug] parsed listenAddress: " << listenAddress << std::endl;
+	std::cout << "[Debug] host: " << host << ", port: " << port << std::endl;
 	std::memset(&hints, 0, sizeof(struct addrinfo));
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
@@ -213,6 +186,7 @@ void Server::bindSocket()
 		std::cerr << "Error: getaddrinfo failed: " << gai_strerror(error_code) << std::endl;
 		std::exit(EXIT_FAILURE);
 	}
+	std::cout << "[Debug] getaddrinfo error_code: " << error_code << std::endl;
 	copy = gai_result;
 	isBound = false;
 	while (copy != NULL && !isBound)
@@ -220,9 +194,11 @@ void Server::bindSocket()
 		bindFd = socket(copy->ai_family, copy->ai_socktype, copy->ai_protocol);
 		if (bindFd == -1)
 		{
+			std::cerr << "[Debug] socket() failed: " << strerror(errno) << std::endl;
 			copy = copy->ai_next;
 			continue;
 		}
+		std::cout << "[Debug] Created socket fd=" << bindFd << std::endl;
 		option_value = 1;
 		if (setsockopt(bindFd, SOL_SOCKET, SO_REUSEADDR, &option_value, sizeof(option_value)) == -1)
 		{
@@ -234,9 +210,14 @@ void Server::bindSocket()
 			listenFd = bindFd;
 			makeNonBlocking(listenFd);
 			isBound = true;
+			std::cout << "[Debug] Bind SUCCESS on fd=" << listenFd << std::endl;
 			break;
 		}
-		close(bindFd);
+		else
+		{
+			std::cerr << "[Debug] bind() failed: " << strerror(errno) << std::endl;
+			close(bindFd);
+		}
 		copy = copy->ai_next;
 	}
 	freeaddrinfo(gai_result);
@@ -275,37 +256,11 @@ void Server::startListening()
 	std::cout << "[Server] Listening on " << host << ":" << port << std::endl;
 }
 
-void Server::addToPoll(int fd, short events)
-{
-	struct pollfd	pfd;
-
-	pfd.fd = fd;
-	pfd.events = events;
-	pfd.revents = 0;
-	pollFds.push_back(pfd);
-}
-
-void Server::removeFromPoll(int fd)
-{
-	size_t	i;
-
-	i = 0;
-	while (i < pollFds.size())
-	{
-		if (pollFds[i].fd == fd)
-		{
-			pollFds.erase(pollFds.begin() + i);
-			break;
-		}
-		++i;
-	}
-}
-
 /**
  * struct sockaddr_in is declared so that client 
  * information (IP address, port) can be extracted from it.
  */
-void Server::acceptNewConnection()
+int Server::acceptConnection()
 {
 	struct sockaddr_in	clientAddr;
 	socklen_t			addrLen;
@@ -316,57 +271,12 @@ void Server::acceptNewConnection()
 	if (clientFd == -1)
 	{
 		if (errno != EWOULDBLOCK && errno != EAGAIN)
-			std::cerr << "Error: accept failed" << std::endl;
-		return;
+			std::cerr << "Error: accept failed on FD " << listenFd << std::endl;
+		return (-1);
 	}
 	makeNonBlocking(clientFd);
-	addToPoll(clientFd, POLLIN);
 	std::cout << "[Server] New connection from fd " << clientFd << std::endl;
-}
-
-void Server::closeConnection(int fd)
-{
-	std::cout << "[Server] Closing connection fd " << fd << std::endl;
-	removeFromPoll(fd);
-	close(fd);
-}
-
-/**
- * There is data to read.
- */
-void Server::handlePollin(int fd)
-{
-	if (fd == listenFd)
-		acceptNewConnection();
-	else
-		std::cout << "[Server] Data ready to read on fd " << fd << std::endl;
-}
-
-/**
- * Writing is now possible, though a write larger than the 
- * available space in a socket or pipe will still block
- * unless O_NONBLOCK is set.
- */
-void Server::handlePollout(int fd)
-{
-	std::cout << "[Server] Ready to write on fd " << fd << std::endl;
-}
-
-/**
- * POLLERR: An error condition is triggered. 
- *          This bit is also set for a file descriptor referring to 
- *          the write end of a pipe when the read end has been closed.
- *
- * POLLHUP: The channel is hang up. Note that when reading from a channel 
- *          such as a pipe or a stream socket, this event merely indicates 
- *          that the peer closed its end of the channel.
- *
- * POLLNVAL: Invalid request.
- */
-void Server::handlePollError(int fd)
-{
-	std::cerr << "[Server] Error on fd " << fd << std::endl;
-	closeConnection(fd);
+	return (clientFd);
 }
 
 void Server::setup()
@@ -378,54 +288,6 @@ void Server::setup()
 		std::exit(EXIT_FAILURE);
 	}
 	startListening();
-	addToPoll(listenFd, POLLIN);
-}
-
-/**
- * A socket that has both data to read AND can write 
- * revents could be: POLLIN | POLLOUT (both bits set)
- *
- * If the control structure is written as:
- * 
- * if (POLLIN) {}
- * else if (POLLOUT) {}
- *
- * It's wrong because the server will handle POLLIN only
- */
-void Server::run()
-{
-	int		ready;
-	size_t	i;
-
-	running = true;
-	std::cout << "[Server] Entering event loop" << std::endl;
-	while (running)
-	{
-		ready = poll(&pollFds[0], pollFds.size(), -1);
-		if (ready == -1)
-		{
-			if (errno == EINTR)
-				continue;
-			std::cerr << "Error: poll failed" << std::endl;
-			break;
-		}
-		i = 0;
-		while (i < pollFds.size())
-		{
-			if (pollFds[i].revents & POLLIN)
-				handlePollin(pollFds[i].fd);
-			if (pollFds[i].revents & POLLOUT)
-				handlePollout(pollFds[i].fd);
-			if (pollFds[i].revents & (POLLERR | POLLHUP | POLLNVAL))
-				handlePollError(pollFds[i].fd);
-			++i;
-		}
-	}
-}
-
-void Server::stop()
-{
-	running = false;
 }
 
 int Server::getListenFd() const

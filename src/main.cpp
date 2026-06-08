@@ -2,7 +2,7 @@
 #include "config/Config.hpp"
 #include "config/ServerConfig.hpp"
 #include "config/LocationConfig.hpp"
-#include "Server.hpp"
+#include "WebServer.hpp"
 
 static void printConfigDetails(Config const & config)
 {
@@ -118,36 +118,6 @@ static void printConfigDetails(Config const & config)
 	std::cout << "=== END OF CONFIGURATION ===" << std::endl;
 }
 
-static void runServers(Config const & config)
-{
-	std::vector<ServerConfig> const &	servers = config.getServers();
-	std::vector<Server>					runningServers;
-	size_t								i;
-	bool								anyRunning;
-
-	i = 0;
-	while (i < servers.size())
-	{
-		Server	srv(servers[i]);
-		srv.setup();
-		runningServers.push_back(srv);
-		++i;
-	}
-	std::cout << "\n[webserv] All servers initialized. Starting event loops..." << std::endl;
-	anyRunning = true;
-	while (anyRunning)
-	{
-		anyRunning = false;
-		i = 0;
-		while (i < runningServers.size())
-		{
-			runningServers[i].run();
-			anyRunning = true;
-			++i;
-		}
-	}
-}
-
 int	main(int argc, char **argv)
 {
 	std::string	configPath;
@@ -165,6 +135,7 @@ int	main(int argc, char **argv)
 	std::cout << "[webserv] starting with config: " << configPath << std::endl;
 	config.parse(configPath);
 	printConfigDetails(config);
-	runServers(config);
+	WebServer	webServer(config);
+	webServer.run();
 	return (EXIT_SUCCESS);
 }

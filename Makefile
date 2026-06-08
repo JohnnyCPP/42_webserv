@@ -18,7 +18,8 @@ CONF_DIR		:= ${SRC_DIR}config/
 
 
 ROOT_SRC_FILES	:=	main.cpp \
-					Server.cpp
+					Server.cpp \
+					WebServer.cpp
 CONF_SRC_FILES	:=	LocationConfig.cpp \
 					ServerConfig.cpp \
 					Config.cpp
