@@ -1,5 +1,4 @@
-#include "webserv.hpp"
-#include "prototypes.hpp"
+#include "request.hpp"
 #include <cctype>
 #include <limits>
 
