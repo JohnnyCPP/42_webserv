@@ -28,6 +28,7 @@ namespace WebServ
 	const std::string	HTTP_VERSION = "HTTP/1.1";
 	const std::string	HTTP_VERSION_LEGACY = "HTTP/1.0";
 
+	const int			REQUEST_INCOMPLETE = -1;
 	const int			OK = 200;
 	const int			BAD_REQUEST = 400;
 	const int			METHOD_NOT_ALLOWED = 405;

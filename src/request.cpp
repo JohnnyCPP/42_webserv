@@ -1,5 +1,4 @@
-#include "webserv.hpp"
-#include "prototypes.hpp"
+#include "request.hpp"
 #include <cctype>
 #include <limits>
 
@@ -29,27 +28,27 @@ static int	check_version(const std::string &version)
 	return (WebServ::BAD_REQUEST);
 }
 
-static int	assign_path(const std::string &target, t_request_line &out)
+static int	assign_path(const std::string &target, RequestLine &out)
 {
 	std::string::size_type	q;
 
 	q = target.find('?');
 	if (q == std::string::npos)
 	{
-		out.path = target;
-		out.query.clear();
+		out.setPath(target);
+		out.setQuery("");
 	}
 	else
 	{
-		out.path = target.substr(0, q);
-		out.query = target.substr(q + 1);
+		out.setPath(target.substr(0, q));
+		out.setQuery(target.substr(q + 1));
 	}
-	if (out.path.empty() || out.path[0] != '/')
+	if (out.getPath().empty() || out.getPath()[0] != '/')
 		return (WebServ::BAD_REQUEST);
 	return (WebServ::OK);
 }
 
-int	parse_request_line(const std::string &raw, t_request_line &out,
+int	parse_request_line(const std::string &raw, RequestLine &out,
 		size_t &consumed)
 {
 	std::string::size_type	eol;
@@ -72,19 +71,19 @@ int	parse_request_line(const std::string &raw, t_request_line &out,
 	if (sp2 == std::string::npos)
 		return (WebServ::BAD_REQUEST);
 
-	out.method = line.substr(0, sp1);
+	out.setMethod(line.substr(0, sp1));
 	target = line.substr(sp1 + 1, sp2 - sp1 - 1);
-	out.version = line.substr(sp2 + 1);
+	out.setVersion(line.substr(sp2 + 1));
 
-	if (out.version.find(' ') != std::string::npos)
+	if (out.getVersion().find(' ') != std::string::npos)
 		return (WebServ::BAD_REQUEST);
-	if (!method_is_well_formed(out.method))
+	if (!method_is_well_formed(out.getMethod()))
 		return (WebServ::BAD_REQUEST);
 
 	status = assign_path(target, out);
 	if (status != WebServ::OK)
 		return (status);
-	status = check_version(out.version);
+	status = check_version(out.getVersion());
 	if (status != WebServ::OK)
 		return (status);
 

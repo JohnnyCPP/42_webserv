@@ -1,5 +1,4 @@
-#include "webserv.hpp"
-#include "prototypes.hpp"
+#include "request.hpp"
 
 static int	g_pass = 0;
 static int	g_fail = 0;
