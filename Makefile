@@ -20,7 +20,8 @@ CONF_DIR		:= ${SRC_DIR}config/
 ROOT_SRC_FILES	:=	main.cpp \
 					Server.cpp \
 					WebServer.cpp \
-					request.cpp
+					request.cpp \
+					RequestLine.cpp
 CONF_SRC_FILES	:=	LocationConfig.cpp \
 					ServerConfig.cpp \
 					Config.cpp
@@ -83,12 +84,17 @@ re: fclean all
 
 HEADERS_TEST	:= test_headers
 BODY_TEST		:= test_body
+REQLINE_TEST	:= test_request_line
+
+PARSER_SRCS		:= ${SRC_DIR}request.cpp ${SRC_DIR}RequestLine.cpp
 
 test:
-	@$(CXX) $(CXXFLAGS) $(INCLUDES) ${SRC_DIR}request.cpp ./tests/test_headers.cpp -o $(HEADERS_TEST)
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) ${PARSER_SRCS} ./tests/test_headers.cpp -o $(HEADERS_TEST)
 	@./$(HEADERS_TEST)
-	@$(CXX) $(CXXFLAGS) $(INCLUDES) ${SRC_DIR}request.cpp ./tests/test_body.cpp -o $(BODY_TEST)
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) ${PARSER_SRCS} ./tests/test_body.cpp -o $(BODY_TEST)
 	@./$(BODY_TEST)
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) ${PARSER_SRCS} ./tests/test_request_line.cpp -o $(REQLINE_TEST)
+	@./$(REQLINE_TEST)
 
 
 sanitize: ${OBJ_FILES}

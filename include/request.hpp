@@ -2,20 +2,9 @@
 # define REQUEST_HPP
 
 # include "webserv.hpp"
+# include "RequestLine.hpp"
 
-// TODO (#46 follow-up): replace this struct with an OCF-compliant Request
-// class, as required by the subject. Kept as a struct for now to restore the
-// parser (#9/#10/#42/#44) to a building, tested state without reshaping the
-// integration contract before syncing with the reception loop.
-struct t_request_line
-{
-	std::string	method;
-	std::string	path;
-	std::string	query;
-	std::string	version;
-};
-
-int	parse_request_line(const std::string &raw, t_request_line &out,
+int	parse_request_line(const std::string &raw, RequestLine &out,
 		size_t &consumed);
 
 int	parse_headers(const std::string &buffer, size_t headers_start,
