@@ -20,27 +20,27 @@ class ServerConfig
 	public:
 
 		ServerConfig();
-		ServerConfig(ServerConfig const & that);
 		~ServerConfig();
-		ServerConfig & operator=(ServerConfig const & that);
+		ServerConfig(const ServerConfig & that);
+		ServerConfig & operator=(const ServerConfig & that);
 
-		void		addListenAddress(std::string const & address);
-		void		setServerName(std::string const & name);
+		void		addListenAddress(const std::string & address);
+		void		setServerName(const std::string & name);
 		void		setClientMaxBodySize(size_t size);
-		void		addErrorPage(int code, std::string const & path);
-		void		setRoot(std::string const & newRoot);
-		void		setIndex(std::string const & newIndex);
-		void		addLocation(LocationConfig const & location);
+		void		addErrorPage(int code, const std::string & path);
+		void		setRoot(const std::string & newRoot);
+		void		setIndex(const std::string & newIndex);
+		void		addLocation(const LocationConfig & location);
 
-		std::vector<std::string> const &	getListenAddresses() const;
-		std::string const &					getServerName() const;
+		const std::vector<std::string> &	getListenAddresses() const;
+		const std::string &					getServerName() const;
 		size_t								getClientMaxBodySize() const;
-		std::map<int, std::string> const &	getErrorPages() const;
-		std::string const &					getRoot() const;
-		std::string const &					getIndex() const;
-		std::vector<LocationConfig> const &	getLocations() const;
+		const std::map<int, std::string> &	getErrorPages() const;
+		const std::string &					getRoot() const;
+		const std::string &					getIndex() const;
+		const std::vector<LocationConfig> &	getLocations() const;
 
-		LocationConfig const *				matchLocation(std::string const & requestPath) const;
+		const LocationConfig *				matchLocation(const std::string & requestPath) const;
 };
 
 #endif

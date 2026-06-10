@@ -8,8 +8,11 @@ class Server
 {
 public:
 
-	Server(ServerConfig const & config);
+	Server();
 	~Server();
+	Server(const Server & that);
+	Server(const ServerConfig & config);
+	Server & operator=(const Server & that);
 
 	void	setup();
 	int		getListenFd() const;
@@ -23,11 +26,7 @@ private:
 	std::string					host;
 	int							port;
 
-	Server();
-	Server(Server const & that);
-	Server & operator=(Server const & that);
-
-	void	parseListenAddress(std::string const & addr, std::string & outHost, int & outPort);
+	void	parseListenAddress(const std::string & addr, std::string & outHost, int & outPort);
 	void	bindSocket();
 	void	makeNonBlocking(int fd);
 	void	startListening();

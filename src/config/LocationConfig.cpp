@@ -1,10 +1,22 @@
 #include "config/LocationConfig.hpp"
 
-LocationConfig::LocationConfig() : autoindex(false)
+LocationConfig::LocationConfig()
+	: path(""),
+	  allowedMethods(),
+	  redirect(""),
+	  root(""),
+	  autoindex(false),
+	  indexFile(""),
+	  uploadStore(""),
+	  cgiExtensions()
 {
 }
 
-LocationConfig::LocationConfig(LocationConfig const & that)
+LocationConfig::~LocationConfig()
+{
+}
+
+LocationConfig::LocationConfig(const LocationConfig & that)
 	: path(that.path),
 	  allowedMethods(that.allowedMethods),
 	  redirect(that.redirect),
@@ -16,11 +28,7 @@ LocationConfig::LocationConfig(LocationConfig const & that)
 {
 }
 
-LocationConfig::~LocationConfig()
-{
-}
-
-LocationConfig & LocationConfig::operator=(LocationConfig const & that)
+LocationConfig & LocationConfig::operator=(const LocationConfig & that)
 {
 	if (this != &that)
 	{
@@ -36,22 +44,22 @@ LocationConfig & LocationConfig::operator=(LocationConfig const & that)
 	return (*this);
 }
 
-void LocationConfig::setPath(std::string const & newPath)
+void LocationConfig::setPath(const std::string & newPath)
 {
 	path = newPath;
 }
 
-void LocationConfig::addAllowedMethod(std::string const & method)
+void LocationConfig::addAllowedMethod(const std::string & method)
 {
 	allowedMethods.push_back(method);
 }
 
-void LocationConfig::setRedirect(std::string const & newRedirect)
+void LocationConfig::setRedirect(const std::string & newRedirect)
 {
 	redirect = newRedirect;
 }
 
-void LocationConfig::setRoot(std::string const & newRoot)
+void LocationConfig::setRoot(const std::string & newRoot)
 {
 	root = newRoot;
 }
@@ -61,37 +69,37 @@ void LocationConfig::setAutoindex(bool newAutoindex)
 	autoindex = newAutoindex;
 }
 
-void LocationConfig::setIndex(std::string const & newIndex)
+void LocationConfig::setIndex(const std::string & newIndex)
 {
 	indexFile = newIndex;
 }
 
-void LocationConfig::setUploadStore(std::string const & newUploadStore)
+void LocationConfig::setUploadStore(const std::string & newUploadStore)
 {
 	uploadStore = newUploadStore;
 }
 
-void LocationConfig::addCgiExtension(std::string const & ext)
+void LocationConfig::addCgiExtension(const std::string & ext)
 {
 	cgiExtensions.push_back(ext);
 }
 
-std::string const & LocationConfig::getPath() const
+const std::string & LocationConfig::getPath() const
 {
 	return (path);
 }
 
-std::vector<std::string> const & LocationConfig::getAllowedMethods() const
+const std::vector<std::string> & LocationConfig::getAllowedMethods() const
 {
 	return (allowedMethods);
 }
 
-std::string const & LocationConfig::getRedirect() const
+const std::string & LocationConfig::getRedirect() const
 {
 	return (redirect);
 }
 
-std::string const & LocationConfig::getRoot() const
+const std::string & LocationConfig::getRoot() const
 {
 	return (root);
 }
@@ -101,17 +109,17 @@ bool LocationConfig::getAutoindex() const
 	return (autoindex);
 }
 
-std::string const & LocationConfig::getIndex() const
+const std::string & LocationConfig::getIndex() const
 {
 	return (indexFile);
 }
 
-std::string const & LocationConfig::getUploadStore() const
+const std::string & LocationConfig::getUploadStore() const
 {
 	return (uploadStore);
 }
 
-std::vector<std::string> const & LocationConfig::getCgiExtensions() const
+const std::vector<std::string> & LocationConfig::getCgiExtensions() const
 {
 	return (cgiExtensions);
 }
