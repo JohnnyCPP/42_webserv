@@ -1,0 +1,48 @@
+#ifndef WEB_SERVER_HPP
+# define WEB_SERVER_HPP
+
+# include "webserv.hpp"
+# include "config/Config.hpp"
+# include "server/Server.hpp"
+# include "client/Client.hpp"
+# include "http/HttpResponse.hpp"
+
+class WebServer
+{
+private:
+
+	std::vector<Server>			servers;
+	std::vector<struct pollfd>	pollFds;
+	std::map<int, Client>		clients;
+	std::map<int, std::string>	pendingResponses;
+	std::vector<int>			clientsToRemove;
+	bool						running;
+
+	void	addToPoll(int fd, short events);
+	void	removeFromPoll(int fd);
+	
+	void	getListeningSockets();
+
+	void	handlePollIn(struct pollfd current);
+	void	handlePollOut(struct pollfd current);
+	void	handlePollErr(struct pollfd current);
+
+	void	handleClientRead(int fd);
+	void	processClientRequest(int fd);
+	void	removeClient(int fd);
+	void	cleanupRemovedClients();
+	void	modifyPollEvents(int fd, short events);
+
+public:
+
+	WebServer();
+	~WebServer();
+	WebServer(const WebServer & that);
+	WebServer(const Config & config);
+	WebServer&	operator=(const WebServer & that);
+	
+	void	run();
+	void	stop();
+};
+
+#endif

@@ -1,12 +1,44 @@
-#include "Server.hpp"
+#include "server/Server.hpp"
 #include "constants.hpp"
 
-Server::Server(ServerConfig const & config) : config(config), listenFd(-1), host(""), port(0)
+Server::Server()
+	: config(),
+	  listenFd(-1),
+	  host(""),
+	  port(0)
+{
+}
+
+Server::Server(const Server & that)
+	: config(that.config),
+	  listenFd(that.listenFd),
+	  host(that.host),
+	  port(that.port)
+{
+}
+
+Server::Server(const ServerConfig & config)
+	: config(config),
+	  listenFd(-1),
+	  host(""),
+	  port(0)
 {
 }
 
 Server::~Server()
 {
+}
+
+Server &	Server::operator=(const Server & that)
+{
+	if (this != &that)
+	{
+		config = that.config;
+		listenFd = that.listenFd;
+		host = that.host;
+		port = that.port;
+	}
+	return (*this);
 }
 
 /**
@@ -49,7 +81,7 @@ void Server::makeNonBlocking(int fd)
 	}
 }
 
-void Server::parseListenAddress(std::string const & addr, std::string & host, int & port)
+void Server::parseListenAddress(const std::string & addr, std::string & host, int & port)
 {
 	size_t	colonPos;
 	bool	isAllDigits;

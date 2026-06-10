@@ -2,11 +2,7 @@
 #include "config/ServerConfig.hpp"
 #include "config/LocationConfig.hpp"
 
-Config::Config()
-{
-}
-
-Config::Config(Config const & that) : servers(that.servers)
+Config::Config() : servers()
 {
 }
 
@@ -14,14 +10,18 @@ Config::~Config()
 {
 }
 
-Config & Config::operator=(Config const & that)
+Config::Config(const Config & that) : servers(that.servers)
+{
+}
+
+Config & Config::operator=(const Config & that)
 {
 	if (this != &that)
 		servers = that.servers;
 	return (*this);
 }
 
-std::string Config::readFile(std::string const & path)
+std::string Config::readFile(const std::string & path)
 {
 	std::ifstream		file;
 	std::stringstream	buffer;
@@ -79,7 +79,7 @@ void Config::trim(std::string & str)
 	str = str.substr(start, end - start);
 }
 
-std::vector<std::string> Config::splitLines(std::string const & content)
+std::vector<std::string> Config::splitLines(const std::string & content)
 {
 	std::vector<std::string>	lines;
 	std::string					line;
@@ -101,7 +101,7 @@ std::vector<std::string> Config::splitLines(std::string const & content)
 	return (lines);
 }
 
-std::vector<std::string> Config::tokenizeLine(std::string const & line)
+std::vector<std::string> Config::tokenizeLine(const std::string & line)
 {
 	std::vector<std::string>	tokens;
 	std::string					token;
@@ -147,7 +147,7 @@ std::vector<std::string> Config::tokenizeLine(std::string const & line)
 	return (tokens);
 }
 
-void Config::parseServers(std::vector<std::string> const & lines)
+void Config::parseServers(const std::vector<std::string> & lines)
 {
 	size_t	i;
 
@@ -174,10 +174,10 @@ void Config::parseServers(std::vector<std::string> const & lines)
 	}
 }
 
-ServerConfig Config::parseServerBlock(std::vector<std::string> const & lines, size_t & index)
+ServerConfig Config::parseServerBlock(const std::vector<std::string> & lines, size_t & index)
 {
-	std::string		location;
 	ServerConfig	server;
+	std::string		location;
 	size_t			braceCount;
 
 	braceCount = 1;
@@ -216,7 +216,7 @@ ServerConfig Config::parseServerBlock(std::vector<std::string> const & lines, si
 	return (server);
 }
 
-LocationConfig Config::parseLocationBlock(std::vector<std::string> const & lines, size_t & index, std::string location)
+LocationConfig Config::parseLocationBlock(const std::vector<std::string> & lines, size_t & index, std::string location)
 {
 	LocationConfig	locationConfig;
 	size_t			braceCount;
@@ -263,7 +263,7 @@ LocationConfig Config::parseLocationBlock(std::vector<std::string> const & lines
 	return (locationConfig);
 }
 
-void Config::parseDirective(ServerConfig & server, std::string const & line)
+void Config::parseDirective(ServerConfig & server, const std::string & line)
 {
 	std::vector<std::string>	tokens;
 	size_t						i;
@@ -331,7 +331,7 @@ void Config::parseDirective(ServerConfig & server, std::string const & line)
 	}
 }
 
-void Config::parseLocationDirective(LocationConfig & location, std::string const & line)
+void Config::parseLocationDirective(LocationConfig & location, const std::string & line)
 {
 	std::vector<std::string>	tokens;
 	size_t						i;
@@ -383,7 +383,7 @@ void Config::parseLocationDirective(LocationConfig & location, std::string const
 	}
 }
 
-void Config::parse(std::string const & path)
+void Config::parse(const std::string & path)
 {
 	std::string					content;
 	std::vector<std::string>	lines;
@@ -395,7 +395,7 @@ void Config::parse(std::string const & path)
 	validateConfig();
 }
 
-std::vector<ServerConfig> const & Config::getServers() const
+const std::vector<ServerConfig> & Config::getServers() const
 {
 	return (servers);
 }

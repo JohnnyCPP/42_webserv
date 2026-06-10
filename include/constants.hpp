@@ -1,20 +1,7 @@
 #ifndef CONSTANTS_HPP
 # define CONSTANTS_HPP
 
-enum BodyLengthStatus
-{
-	BODY_NONE,
-	BODY_LENGTH,
-	BODY_CHUNKED,
-	BODY_ERROR
-};
-
-enum RequestStatus
-{
-	REQ_INCOMPLETE,
-	REQ_COMPLETE,
-	REQ_ERROR
-};
+# include "webserv.hpp"
 
 namespace WebServ
 {

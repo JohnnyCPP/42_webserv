@@ -3,8 +3,6 @@
 static int	g_pass = 0;
 static int	g_fail = 0;
 
-static const std::string	REQUEST_LINE = "GET / HTTP/1.1\r\n";
-
 static void	report(const std::string &name, bool ok)
 {
 	if (ok)
@@ -19,95 +17,73 @@ static void	report(const std::string &name, bool ok)
 	}
 }
 
-static int	run(const std::string &section,
-		std::map<std::string, std::string> &headers, size_t &body_start)
+static std::map<std::string, std::string>	one(const std::string &key,
+		const std::string &value)
 {
-	std::string	buffer;
+	std::map<std::string, std::string>	h;
 
-	buffer = REQUEST_LINE + section;
-	return (parse_headers(buffer, REQUEST_LINE.size(), headers, body_start));
-}
-
-static bool	has(const std::map<std::string, std::string> &h,
-		const std::string &key, const std::string &value)
-{
-	std::map<std::string, std::string>::const_iterator	it;
-
-	it = h.find(key);
-	return (it != h.end() && it->second == value);
+	h[key] = value;
+	return (h);
 }
 
 int	main(void)
 {
 	std::map<std::string, std::string>	h;
-	size_t								body;
+	size_t								len;
+
+	len = 42;
+	report("CL 5 -> LENGTH 5",
+		detect_body_length(one("content-length", "5"), len) == BODY_LENGTH
+		&& len == 5);
+
+	len = 42;
+	report("CL 0 -> LENGTH 0",
+		detect_body_length(one("content-length", "0"), len) == BODY_LENGTH
+		&& len == 0);
+
+	report("no headers -> NONE",
+		detect_body_length(std::map<std::string, std::string>(), len)
+		== BODY_NONE);
+
+	report("chunked -> CHUNKED",
+		detect_body_length(one("transfer-encoding", "chunked"), len)
+		== BODY_CHUNKED);
 
 	h.clear();
-	report("single header",
-		run("Host: example.com\r\n\r\n", h, body) == WebServ::OK
-		&& h.size() == 1 && has(h, "host", "example.com"));
+	h["content-length"] = "5";
+	h["transfer-encoding"] = "chunked";
+	report("chunked wins over CL",
+		detect_body_length(h, len) == BODY_CHUNKED);
 
-	h.clear();
-	report("value OWS trimmed",
-		run("Host:   example.com   \r\n\r\n", h, body) == WebServ::OK
-		&& has(h, "host", "example.com"));
+	report("CL abc -> ERROR",
+		detect_body_length(one("content-length", "abc"), len) == BODY_ERROR);
 
-	h.clear();
-	report("two headers + body offset",
-		run("Content-Length: 5\r\nHost: a\r\n\r\nBODY", h, body) == WebServ::OK
-		&& h.size() == 2 && has(h, "content-length", "5")
-		&& has(h, "host", "a")
-		&& body == REQUEST_LINE.size()
-			+ std::string("Content-Length: 5\r\nHost: a\r\n\r\n").size());
+	report("CL -1 -> ERROR",
+		detect_body_length(one("content-length", "-1"), len) == BODY_ERROR);
 
-	h.clear();
-	report("internal space preserved",
-		run("User-Agent: Mozilla 5.0\r\n\r\n", h, body) == WebServ::OK
-		&& has(h, "user-agent", "Mozilla 5.0"));
+	report("CL empty -> ERROR",
+		detect_body_length(one("content-length", ""), len) == BODY_ERROR);
 
-	h.clear();
-	report("empty value",
-		run("X-Empty:\r\n\r\n", h, body) == WebServ::OK
-		&& has(h, "x-empty", ""));
+	report("NONE -> COMPLETE",
+		check_request_complete("", 0, BODY_NONE, 0) == REQ_COMPLETE);
 
-	h.clear();
-	report("zero headers",
-		run("\r\n", h, body) == WebServ::OK
-		&& h.empty() && body == REQUEST_LINE.size() + 2);
+	report("LENGTH 5, 3 bytes -> INCOMPLETE",
+		check_request_complete("abc", 0, BODY_LENGTH, 5) == REQ_INCOMPLETE);
 
-	h.clear();
-	report("incomplete (no blank line)",
-		run("Host: example.com\r\n", h, body) == WebServ::REQUEST_INCOMPLETE);
+	report("LENGTH 5, 5 bytes -> COMPLETE",
+		check_request_complete("abcde", 0, BODY_LENGTH, 5) == REQ_COMPLETE);
 
-	h.clear();
-	report("incomplete (empty buffer)",
-		parse_headers("", 0, h, body) == WebServ::REQUEST_INCOMPLETE);
+	report("LENGTH 5, 7 bytes -> COMPLETE",
+		check_request_complete("abcdefg", 0, BODY_LENGTH, 5) == REQ_COMPLETE);
 
-	h.clear();
-	report("no colon",
-		run("Invalid line\r\n\r\n", h, body) == WebServ::BAD_REQUEST);
+	report("LENGTH 0, 0 bytes -> COMPLETE",
+		check_request_complete("", 0, BODY_LENGTH, 0) == REQ_COMPLETE);
 
-	h.clear();
-	report("empty name",
-		run(": value\r\n\r\n", h, body) == WebServ::BAD_REQUEST);
+	report("ERROR -> ERROR",
+		check_request_complete("abc", 0, BODY_ERROR, 0) == REQ_ERROR);
 
-	h.clear();
-	report("space before colon",
-		run("Host : x\r\n\r\n", h, body) == WebServ::BAD_REQUEST);
-
-	h.clear();
-	report("line folding",
-		run("Host: x\r\n folded\r\n\r\n", h, body) == WebServ::BAD_REQUEST);
-
-	h.clear();
-	report("conflicting content-length",
-		run("Content-Length: 5\r\nContent-Length: 6\r\n\r\n", h, body)
-		== WebServ::BAD_REQUEST);
-
-	h.clear();
-	report("duplicate last-wins",
-		run("X-Test: a\r\nX-Test: b\r\n\r\n", h, body) == WebServ::OK
-		&& has(h, "x-test", "b"));
+	report("bodyStart past end -> INCOMPLETE",
+		check_request_complete("abc", 10, BODY_LENGTH, 5) == REQ_INCOMPLETE);
 
 	std::cout << "\n" << g_pass << " passed, " << g_fail << " failed."
 		<< std::endl;

@@ -12,28 +12,28 @@ private:
 
 	std::vector<ServerConfig>	servers;
 
-	std::string					readFile(std::string const & path);
+	std::string					readFile(const std::string & path);
 	void						removeComments(std::string & content);
 	void						normalizeBraces(std::string & content);
 	void						trim(std::string & str);
-	std::vector<std::string>	splitLines(std::string const & content);
-	void						parseServers(std::vector<std::string> const & lines);
-	ServerConfig				parseServerBlock(std::vector<std::string> const & lines, size_t & index);
-	LocationConfig				parseLocationBlock(std::vector<std::string> const & lines, size_t & index, std::string location);
-	void						parseDirective(ServerConfig & server, std::string const & line);
-	void						parseLocationDirective(LocationConfig & location, std::string const & line);
-	std::vector<std::string>	tokenizeLine(std::string const & line);
+	std::vector<std::string>	splitLines(const std::string & content);
+	void						parseServers(const std::vector<std::string> & lines);
+	ServerConfig				parseServerBlock(const std::vector<std::string> & lines, size_t & index);
+	LocationConfig				parseLocationBlock(const std::vector<std::string> & lines, size_t & index, std::string location);
+	void						parseDirective(ServerConfig & server, const std::string & line);
+	void						parseLocationDirective(LocationConfig & location, const std::string & line);
+	std::vector<std::string>	tokenizeLine(const std::string & line);
 	void						validateConfig();
 
 public:
 
 	Config();
-	Config(Config const & that);
 	~Config();
-	Config & operator=(Config const & that);
+	Config(const Config & that);
+	Config & operator=(const Config & that);
 
-	void								parse(std::string const & path);
-	std::vector<ServerConfig> const &	getServers() const;
+	void								parse(const std::string & path);
+	const std::vector<ServerConfig> &	getServers() const;
 };
 
 #endif

@@ -4,6 +4,7 @@
 // ordered alphabetically for easier management
 # include <arpa/inet.h>
 # include <cerrno>
+# include <cstddef>
 # include <cstdlib>
 # include <cstring>
 # include <dirent.h>

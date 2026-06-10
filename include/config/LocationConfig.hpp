@@ -19,27 +19,27 @@ private:
 public:
 
 	LocationConfig();
-	LocationConfig(LocationConfig const & that);
 	~LocationConfig();
-	LocationConfig & operator=(LocationConfig const & that);
+	LocationConfig(const LocationConfig & that);
+	LocationConfig & operator=(const LocationConfig & that);
 
-	void				setPath(std::string const & newPath);
-	void				addAllowedMethod(std::string const & method);
-	void				setRedirect(std::string const & newRedirect);
-	void				setRoot(std::string const & newRoot);
+	void				setPath(const std::string & newPath);
+	void				addAllowedMethod(const std::string & method);
+	void				setRedirect(const std::string & newRedirect);
+	void				setRoot(const std::string & newRoot);
 	void				setAutoindex(bool newAutoindex);
-	void				setIndex(std::string const & newIndex);
-	void				setUploadStore(std::string const & newUploadStore);
-	void				addCgiExtension(std::string const & ext);
+	void				setIndex(const std::string & newIndex);
+	void				setUploadStore(const std::string & newUploadStore);
+	void				addCgiExtension(const std::string & ext);
 
-	std::string const &					getPath() const;
-	std::vector<std::string> const &	getAllowedMethods() const;
-	std::string const &					getRedirect() const;
-	std::string const &					getRoot() const;
+	const std::string &					getPath() const;
+	const std::vector<std::string> &	getAllowedMethods() const;
+	const std::string &					getRedirect() const;
+	const std::string &					getRoot() const;
 	bool								getAutoindex() const;
-	std::string const &					getIndex() const;
-	std::string const &					getUploadStore() const;
-	std::vector<std::string> const &	getCgiExtensions() const;
+	const std::string &					getIndex() const;
+	const std::string &					getUploadStore() const;
+	const std::vector<std::string> &	getCgiExtensions() const;
 
 	bool								hasRedirect() const;
 	bool								hasRoot() const;

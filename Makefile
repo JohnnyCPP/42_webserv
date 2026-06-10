@@ -15,23 +15,32 @@ SRC_DIR			:= ./src/
 INC_DIR			:= ./include/
 OBJ_DIR			:= ./obj/
 CONF_DIR		:= ${SRC_DIR}config/
+SERV_DIR		:= ${SRC_DIR}server/
+CLNT_DIR		:= ${SRC_DIR}client/
+HTTP_DIR		:= ${SRC_DIR}http/
 
 
-ROOT_SRC_FILES	:=	main.cpp \
-					Server.cpp \
-					WebServer.cpp \
-					request.cpp \
-					RequestLine.cpp
+ROOT_SRC_FILES	:=	main.cpp
 CONF_SRC_FILES	:=	LocationConfig.cpp \
 					ServerConfig.cpp \
 					Config.cpp
+SERV_SRC_FILES	:=	Server.cpp \
+					WebServer.cpp
+CLNT_SRC_FILES	:=	Client.cpp
+HTTP_SRC_FILES	:=	HttpResponse.cpp
 
 ROOT_SRCS		:= $(addprefix ${SRC_DIR}, ${ROOT_SRC_FILES})
 CONF_SRCS		:= $(addprefix ${CONF_DIR}, ${CONF_SRC_FILES})
+SERV_SRCS		:= $(addprefix ${SERV_DIR}, ${SERV_SRC_FILES})
+CLNT_SRCS		:= $(addprefix ${CLNT_DIR}, ${CLNT_SRC_FILES})
+HTTP_SRCS		:= $(addprefix ${HTTP_DIR}, ${HTTP_SRC_FILES})
 
 
 SRC_FILES		:=	${ROOT_SRCS} \
-					${CONF_SRCS}
+					${CONF_SRCS} \
+					${SERV_SRCS} \
+					${CLNT_SRCS} \
+					${HTTP_SRCS}
 
 
 # "patsubst": pattern substitution
@@ -85,7 +94,6 @@ re: fclean all
 HEADERS_TEST	:= test_headers
 BODY_TEST		:= test_body
 REQLINE_TEST	:= test_request_line
-
 PARSER_SRCS		:= ${SRC_DIR}request.cpp ${SRC_DIR}RequestLine.cpp
 
 test:
