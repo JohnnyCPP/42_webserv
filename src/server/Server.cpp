@@ -1,5 +1,6 @@
 #include "server/Server.hpp"
 #include "constants.hpp"
+#include "log/log.hpp"
 
 Server::Server()
 	: config(),
@@ -71,12 +72,12 @@ void Server::makeNonBlocking(int fd)
 	flags = fcntl(fd, F_GETFL, 0);
 	if (flags == -1)
 	{
-		std::cerr << "Error: fcntl F_GETFL failed" << std::endl;
+		logError(std::string("fcntl() F_GETFL failed: ") + strerror(errno));
 		std::exit(EXIT_FAILURE);
 	}
 	if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1)
 	{
-		std::cerr << "Error: fcntl F_SETFL O_NONBLOCK failed" << std::endl;
+		logError(std::string("fcntl() F_SETFL O_NONBLOCK failed: ") + strerror(errno));
 		std::exit(EXIT_FAILURE);
 	}
 }
@@ -183,6 +184,8 @@ void Server::parseListenAddress(const std::string & addr, std::string & host, in
  */
 void Server::bindSocket()
 {
+	std::ostringstream	info_stream;
+	std::ostringstream	error_stream;
 	std::ostringstream	port_stream;
 	struct addrinfo*	gai_result;
 	struct addrinfo*	copy;
@@ -204,8 +207,8 @@ void Server::bindSocket()
 		listenAddress = config.getListenAddresses()[0];
 		parseListenAddress(listenAddress, host, port);
 	}
-	std::cout << "[Debug] parsed listenAddress: " << listenAddress << std::endl;
-	std::cout << "[Debug] host: " << host << ", port: " << port << std::endl;
+	info_stream << "a server is creating a listening socket on host " << host << " port " << port;
+	log(info_stream.str());
 	std::memset(&hints, 0, sizeof(struct addrinfo));
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
@@ -215,10 +218,9 @@ void Server::bindSocket()
 	error_code = getaddrinfo(host.c_str(), portStr.c_str(), &hints, &gai_result);
 	if (error_code != 0)
 	{
-		std::cerr << "Error: getaddrinfo failed: " << gai_strerror(error_code) << std::endl;
+		logError(std::string("getaddrinfo() failed: ") + gai_strerror(error_code));
 		std::exit(EXIT_FAILURE);
 	}
-	std::cout << "[Debug] getaddrinfo error_code: " << error_code << std::endl;
 	copy = gai_result;
 	isBound = false;
 	while (copy != NULL && !isBound)
@@ -226,15 +228,18 @@ void Server::bindSocket()
 		bindFd = socket(copy->ai_family, copy->ai_socktype, copy->ai_protocol);
 		if (bindFd == -1)
 		{
-			std::cerr << "[Debug] socket() failed: " << strerror(errno) << std::endl;
+			logError(std::string("socket() failed: ") + strerror(errno));
 			copy = copy->ai_next;
 			continue;
 		}
-		std::cout << "[Debug] Created socket fd=" << bindFd << std::endl;
+		info_stream.str("");
+		info_stream.clear();
+		info_stream << "a server created a socket with fd " << bindFd;
+		log(info_stream.str());
 		option_value = 1;
 		if (setsockopt(bindFd, SOL_SOCKET, SO_REUSEADDR, &option_value, sizeof(option_value)) == -1)
 		{
-			std::cerr << "Error: setsockopt SO_REUSEADDR failed" << std::endl;
+			logError(std::string("setsockopt() SO_REUSEADDR failed: ") + strerror(errno));
 			std::exit(EXIT_FAILURE);
 		}
 		if (bind(bindFd, copy->ai_addr, copy->ai_addrlen) == 0)
@@ -242,12 +247,15 @@ void Server::bindSocket()
 			listenFd = bindFd;
 			makeNonBlocking(listenFd);
 			isBound = true;
-			std::cout << "[Debug] Bind SUCCESS on fd=" << listenFd << std::endl;
+			info_stream.str("");
+			info_stream.clear();
+			info_stream << "the server named a socket whose fd is " << bindFd;
+			log(info_stream.str());
 			break;
 		}
 		else
 		{
-			std::cerr << "[Debug] bind() failed: " << strerror(errno) << std::endl;
+			logError(std::string("bind() failed: ") + strerror(errno));
 			close(bindFd);
 		}
 		copy = copy->ai_next;
@@ -255,7 +263,8 @@ void Server::bindSocket()
 	freeaddrinfo(gai_result);
 	if (!isBound)
 	{
-		std::cerr << "Error: bind failed on " << host << ":" << port << std::endl;
+		error_stream << "bind failed on " << host << ":" << port;
+		logError(error_stream.str());
 		std::exit(EXIT_FAILURE);
 	}
 }
@@ -279,13 +288,21 @@ void Server::bindSocket()
  */
 void Server::startListening()
 {
+	std::ostringstream	stream;
+
 	if (listen(listenFd, WebServ::CONNECTION_BACKLOG) == -1)
 	{
-		std::cerr << "Error: listen failed" << std::endl;
+		logError(std::string("listen() failed: ") + strerror(errno));
 		close(listenFd);
 		std::exit(EXIT_FAILURE);
 	}
-	std::cout << "[Server] Listening on " << host << ":" << port << std::endl;
+	stream << "a server is listening on " << host << ":" << port;
+	log(stream.str());
+}
+
+const ServerConfig&	Server::getConfig() const
+{
+	return (config);
 }
 
 /**
@@ -295,6 +312,8 @@ void Server::startListening()
 int Server::acceptConnection()
 {
 	struct sockaddr_in	clientAddr;
+	std::ostringstream	error_stream;
+	std::ostringstream	info_stream;
 	socklen_t			addrLen;
 	int					clientFd;
 
@@ -303,11 +322,16 @@ int Server::acceptConnection()
 	if (clientFd == -1)
 	{
 		if (errno != EWOULDBLOCK && errno != EAGAIN)
-			std::cerr << "Error: accept failed on FD " << listenFd << std::endl;
+		{
+			error_stream << "accept() failed on FD " << listenFd << ": ";
+			logError(error_stream.str() + strerror(errno));
+		}
 		return (-1);
 	}
 	makeNonBlocking(clientFd);
-	std::cout << "[Server] New connection from fd " << clientFd << std::endl;
+	info_stream << "a server with listening socket " << listenFd
+		<< " received a new connection from socket " << clientFd;
+	log(info_stream.str());
 	return (clientFd);
 }
 
@@ -316,7 +340,7 @@ void Server::setup()
 	bindSocket();
 	if (listenFd == -1)
 	{
-		std::cerr << "[Server] FATAL: listenFd is -1 after bindSocket()" << std::endl;
+		logError("listening socket of a server is invalid after bindSocket()");
 		std::exit(EXIT_FAILURE);
 	}
 	startListening();

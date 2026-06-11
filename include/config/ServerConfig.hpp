@@ -25,6 +25,7 @@ class ServerConfig
 		ServerConfig & operator=(const ServerConfig & that);
 
 		void		addListenAddress(const std::string & address);
+		void		setListenAddresses(const std::vector<std::string> & addresses);
 		void		setServerName(const std::string & name);
 		void		setClientMaxBodySize(size_t size);
 		void		addErrorPage(int code, const std::string & path);

@@ -1,3 +1,4 @@
+#include "log/log.hpp"
 #include "config/Config.hpp"
 #include "config/ServerConfig.hpp"
 #include "config/LocationConfig.hpp"
@@ -30,7 +31,7 @@ std::string Config::readFile(const std::string & path)
 	file.open(path.c_str());
 	if (!file.is_open())
 	{
-		std::cerr << "Error: Cannot open config file: " << path << std::endl;
+		logError(std::string("cannot open config file: ") + path);
 		std::exit(EXIT_FAILURE);
 	}
 	while (std::getline(file, line))
@@ -385,14 +386,16 @@ void Config::parseLocationDirective(LocationConfig & location, const std::string
 
 void Config::parse(const std::string & path)
 {
-	std::string					content;
 	std::vector<std::string>	lines;
+	std::string					content;
 
+	log(std::string("configuration: ") + path);
 	content = readFile(path);
 	removeComments(content);
 	lines = splitLines(content);
 	parseServers(lines);
 	validateConfig();
+	logConfig(*this);
 }
 
 const std::vector<ServerConfig> & Config::getServers() const
@@ -404,7 +407,7 @@ void Config::validateConfig()
 {
 	if (servers.empty())
 	{
-		std::cerr << "Error: No server blocks found in config file" << std::endl;
+		logError("no server blocks found in config file");
 		std::exit(EXIT_FAILURE);
 	}
 }

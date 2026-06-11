@@ -47,6 +47,11 @@ void ServerConfig::addListenAddress(const std::string & address)
 	listenAddresses.push_back(address);
 }
 
+void ServerConfig::setListenAddresses(const std::vector<std::string> & addresses)
+{
+	listenAddresses = addresses;
+}
+
 void ServerConfig::setServerName(const std::string & name)
 {
 	serverName = name;

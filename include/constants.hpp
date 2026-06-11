@@ -25,6 +25,9 @@ namespace WebServ
 	const int			MAX_LOCATIONS = 100;
 	const int			CONNECTION_BACKLOG = 128;
 	const int			RECV_BUFFER_SIZE = 8192;
+
+	const std::string	WS_LOG = "[webserv]";
+	const std::string	WS_LOG_ERR = "[error]";
 }
 
 #endif
