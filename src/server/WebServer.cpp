@@ -1,4 +1,5 @@
 #include "server/WebServer.hpp"
+#include "log/log.hpp"
 
 WebServer::WebServer()
 	: servers(),
@@ -30,13 +31,24 @@ WebServer::WebServer(const Config & config)
 {
 	const std::vector<ServerConfig> &	serverConfigs = config.getServers();
 	size_t								i;
+	size_t								j;
 
 	i = 0;
 	while (i < serverConfigs.size())
 	{
-		Server server(serverConfigs[i]);
-		server.setup();
-		servers.push_back(server);
+		const std::vector<std::string> & addresses = serverConfigs[i].getListenAddresses();
+		j = 0;
+		while (j < addresses.size())
+		{
+			ServerConfig serverConfig = serverConfigs[i];
+			std::vector<std::string> address;
+			address.push_back(addresses[j]);
+			serverConfig.setListenAddresses(address);
+			Server server(serverConfig);
+			server.setup();
+			servers.push_back(server);
+			++j;
+		}
 		++i;
 	}
 }
@@ -82,6 +94,7 @@ void WebServer::removeFromPoll(int fd)
 
 void WebServer::getListeningSockets()
 {
+	std::ostringstream	stream;
 	std::vector<int>	listenFds;
 	int					listenFd;
 	size_t				i;
@@ -95,7 +108,7 @@ void WebServer::getListeningSockets()
 			addToPoll(listenFd, POLLIN);
 		++i;
 	}
-	std::cout << "[WebServer] Monitoring " << pollFds.size() << " listening sockets" << std::endl;
+	stream << "webserv is monitoring " << pollFds.size() << " listening sockets";
 }
 
 /**
@@ -103,9 +116,12 @@ void WebServer::getListeningSockets()
  */
 void WebServer::handlePollIn(struct pollfd current)
 {
-	size_t	i;
-	int		clientFd;
+	std::ostringstream	stream;
+	size_t				i;
+	int					clientFd;
 
+	stream << "webserv detected a POLLIN event on socket " << current.fd;
+	log(stream.str());
 	i = 0;
 	while (i < servers.size())
 	{
@@ -116,7 +132,11 @@ void WebServer::handlePollIn(struct pollfd current)
 			{
 				clients.insert(std::make_pair(clientFd, Client(clientFd)));
 				addToPoll(clientFd, POLLIN);
-				std::cout << "[WebServer] New client " << clientFd << " connected" << std::endl;
+				clientToServer[clientFd] = &servers[i];
+				stream.str("");
+				stream.clear();
+				stream << "webserv added a new client socket " << clientFd << " to poll()";
+				log(stream.str());
 			}
 			return;
 		}
@@ -134,12 +154,15 @@ void WebServer::handlePollOut(struct pollfd current)
 {
 	std::map<int, std::string>::iterator	it;
 	std::map<int, Client>::iterator			clientIt;
+	std::ostringstream						stream;
 	const char *							data;
 	ssize_t									bytesSent;
 	size_t									remaining;
 	bool									keepAlive;
 	bool									removeAfterSend;
 
+	stream << "webserv detected a POLLOUT event on socket " << current.fd;
+	log(stream.str());
 	it = pendingResponses.find(current.fd);
 	if (it == pendingResponses.end())
 		return;
@@ -191,7 +214,10 @@ void WebServer::handlePollOut(struct pollfd current)
  */
 void WebServer::handlePollErr(struct pollfd current)
 {
-	std::cerr << "[WebServer] Error on fd " << current.fd << std::endl;
+	std::ostringstream	stream;
+
+	stream << "webserv detected a POLLERR, POLLHUP, or POLLNVAL event on socket " << current.fd;
+	logError(stream.str());
 	close(current.fd);
 	removeFromPoll(current.fd);
 }
@@ -237,39 +263,87 @@ void WebServer::handleClientRead(int fd)
 		removeClient(fd);
 }
 
+/**
+ * Client Request (GET /index.html)
+ *          │
+ *          ▼
+ * ┌─────────────────────────────────────────────────────────────────┐
+ * │ 1. Find Client object by FD                                     │
+ * │ 2. Find which Server owns this client                           │
+ * │ 3. Check for parsing errors (400 Bad Request)                   │
+ * │ 4. Convert request path to filesystem path                      │
+ * │ 5. Check if file exists using stat()                            │
+ * │ 6. If directory → append index.html and check again             │
+ * │ 7. If not a regular file → 403 Forbidden                        │
+ * │      Ensures the path is a regular file,                        │
+ * │      not a special file (device, pipe, socket, symlink)         │
+ * │ 8. Read file and send as response                               │
+ * └─────────────────────────────────────────────────────────────────┘
+ */
 void WebServer::processClientRequest(int fd)
 {
-	std::map<int, Client>::iterator	it;
-	HttpResponse					response;
-	std::string						responseStr;
-	std::string						body;
+	std::map<int, Client>::iterator		clientIt;
+	std::map<int, Server*>::iterator	serverIt;
+	HttpResponse						response;
+	std::string							fullPath;
+	struct stat							statbuf;
 
-	it = clients.find(fd);
-	if (it == clients.end())
+	clientIt = clients.find(fd);
+	if (clientIt == clients.end())
 		return;
-	std::cout << "\n[WebServer] Processing request from fd " << fd << std::endl;
-	std::cout << "  Method: " << it->second.getMethod() << std::endl;
-	std::cout << "  Path: " << it->second.getPath() << std::endl;
-	std::cout << "  Version: " << it->second.getVersion() << std::endl;
-	if (it->second.getHeaders().find("Host") != it->second.getHeaders().end())
-		std::cout << "  Host: " << it->second.getHeaders().find("Host")->second << std::endl;
-	if (it->second.getContentLength() > 0)
-		std::cout << "  Content-Length: " << it->second.getContentLength() << std::endl;
-	if (!it->second.getBody().empty())
-		std::cout << "  Body: " << it->second.getBody() << std::endl;
-	body = "<html><body><h1>Hello from webserv!</h1>";
-	body += "<p>Received request: " + it->second.getMethod() + " " + it->second.getPath() + "</p>";
-	body += "</body></html>";
-	response = HttpResponse::ok(body);
-	responseStr = response.toString();
-	pendingResponses[fd] = responseStr;
+	serverIt = clientToServer.find(fd);
+	if (serverIt == clientToServer.end())
+	{
+		response = HttpResponse::internalServerError();
+		pendingResponses[fd] = response.toString();
+		modifyPollEvents(fd, POLLOUT);
+		return;
+	}
+	if (clientIt->second.hasError())
+	{
+		response = HttpResponse::badRequest();
+		pendingResponses[fd] = response.toString();
+		modifyPollEvents(fd, POLLOUT);
+		return;
+	}
+	fullPath = buildFilePath(clientIt->second, serverIt->second->getConfig());
+	if (stat(fullPath.c_str(), &statbuf) != 0)
+	{
+		response = HttpResponse::notFound();
+		pendingResponses[fd] = response.toString();
+		modifyPollEvents(fd, POLLOUT);
+		return;
+	}
+	if (S_ISDIR(statbuf.st_mode))
+	{
+		fullPath = handleDirectoryPath(fullPath, serverIt->second->getConfig());
+		if (stat(fullPath.c_str(), &statbuf) != 0)
+		{
+			response = HttpResponse::notFound();
+			pendingResponses[fd] = response.toString();
+			modifyPollEvents(fd, POLLOUT);
+			return;
+		}
+	}
+	if (!S_ISREG(statbuf.st_mode))
+	{
+		response = HttpResponse::forbidden();
+		pendingResponses[fd] = response.toString();
+		modifyPollEvents(fd, POLLOUT);
+		return;
+	}
+	response.setBodyFromFile(fullPath);
+	pendingResponses[fd] = response.toString();
 	modifyPollEvents(fd, POLLOUT);
+	log(std::string("webserv is serving a file located at ") + fullPath);
 }
 
 void WebServer::removeClient(int fd)
 {
 	std::map<int, std::string>::iterator	pendingIt;
 	std::map<int, Client>::iterator			clientIt;
+	std::map<int, Server*>::iterator		serverIt;
+	std::ostringstream						stream;
 
 	close(fd);
 	clientIt = clients.find(fd);
@@ -278,17 +352,23 @@ void WebServer::removeClient(int fd)
 	pendingIt = pendingResponses.find(fd);
 	if (pendingIt != pendingResponses.end())
 		pendingResponses.erase(pendingIt);
+	serverIt = clientToServer.find(fd);
+	if (serverIt != clientToServer.end())
+		clientToServer.erase(serverIt);
 	clientsToRemove.push_back(fd);
-	std::cout << "[WebServer] Client " << fd << " is marked for removal" << std::endl;
+	stream << "webserv marked client socket " << fd << " for removal";
+	log(stream.str());
 }
 
 void WebServer::cleanupRemovedClients()
 {
-	size_t	clientsCount;
-	size_t	pollCount;
-	size_t	i;
-	size_t	j;
+	std::ostringstream	stream;
+	size_t				clientsCount;
+	size_t				pollCount;
+	size_t				i;
+	size_t				j;
 
+	log("webserv is looking for removed clients");
 	clientsCount = clientsToRemove.size();
 	pollCount = pollFds.size();
 	i = 0;
@@ -299,6 +379,8 @@ void WebServer::cleanupRemovedClients()
 		{
 			if (pollFds[j].fd == clientsToRemove[i])
 			{
+				stream << "webserv removed client socket " << pollFds[j].fd;
+				log(stream.str());
 				pollFds.erase(pollFds.begin() + j);
 				pollCount = pollCount - 1;
 				break;
@@ -326,6 +408,51 @@ void WebServer::modifyPollEvents(int fd, short events)
 	}
 }
 
+std::string WebServer::buildFilePath(const Client & client, const ServerConfig & serverConfig)
+{
+	std::string	requestPath;
+	std::string	root;
+	std::string	fullPath;
+	size_t		queryPos;
+
+	requestPath = client.getPath();
+	root = serverConfig.getRoot();
+	queryPos = requestPath.find('?');
+	if (queryPos != std::string::npos)
+		requestPath = requestPath.substr(0, queryPos);
+	if (requestPath.length() > 1 && requestPath[requestPath.length() - 1] == '/')
+		requestPath = requestPath.substr(0, requestPath.length() - 1);
+	fullPath = root;
+	if (fullPath[fullPath.length() - 1] != '/')
+		fullPath += '/';
+	if (!requestPath.empty() && requestPath[0] == '/')
+		requestPath = requestPath.substr(1);
+	fullPath += requestPath;
+	return (fullPath);
+}
+
+bool WebServer::isDirectory(const std::string & path)
+{
+	struct stat	statbuf;
+	int			result;
+
+	result = stat(path.c_str(), &statbuf);
+	if (result != 0)
+		return (false);
+	return (S_ISDIR(statbuf.st_mode));
+}
+
+std::string WebServer::handleDirectoryPath(const std::string & dirPath, const ServerConfig & serverConfig)
+{
+	std::string	indexPath;
+
+	indexPath = dirPath;
+	if (indexPath[indexPath.length() - 1] != '/')
+		indexPath += '/';
+	indexPath += serverConfig.getIndex();
+	return (indexPath);
+}
+
 /**
  * A socket that has both data to read AND can write 
  * revents could be: POLLIN | POLLOUT (both bits set)
@@ -339,28 +466,30 @@ void WebServer::modifyPollEvents(int fd, short events)
  */
 void WebServer::run()
 {
-	size_t	i;
-	int		readyFds;
+	extern volatile	sig_atomic_t	g_running;
+	size_t							i;
+	int								readyFds;
 
 	getListeningSockets();
 	if (pollFds.empty())
 	{
-		std::cerr << "[WebServer] No listening sockets available. Exiting." << std::endl;
+		logError("webserv lacks listening sockets, exiting...");
 		return;
 	}
 	running = true;
-	std::cout << "[WebServer] Entering event loop..." << std::endl;
-	while (running)
+	log("webserv is entering to the event loop");
+	while (running && g_running)
 	{
+		cleanupRemovedClients();
+		log("webserv is executing poll()");
 		readyFds = poll(&pollFds[0], pollFds.size(), -1);
 		if (readyFds == -1)
 		{
-			if (errno == EINTR)
-				continue;
-			std::cerr << "Error: poll failed: " << strerror(errno) << std::endl;
+			if (errno == EINTR && !g_running)
+				break;
+			logError(std::string("poll() failed: ") + strerror(errno));
 			break;
 		}
-		cleanupRemovedClients();
 		i = 0;
 		while (i < pollFds.size())
 		{
@@ -376,6 +505,17 @@ void WebServer::run()
 			++i;
 		}
 	}
+	log("webserv is shutting down");
+	i = 0;
+	while (i < pollFds.size())
+	{
+		close(pollFds[i].fd);
+		++i;
+	}
+	pollFds.clear();
+	clients.clear();
+	clientToServer.clear();
+	pendingResponses.clear();
 }
 
 void WebServer::stop()

@@ -14,10 +14,10 @@ public:
 	Server(const ServerConfig & config);
 	Server & operator=(const Server & that);
 
-	void	setup();
-	int		getListenFd() const;
-
-	int		acceptConnection();
+	void				setup();
+	int					getListenFd() const;
+	const ServerConfig&	getConfig() const;
+	int					acceptConnection();
 
 private:
 

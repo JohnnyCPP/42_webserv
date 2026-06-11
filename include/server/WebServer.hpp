@@ -14,6 +14,7 @@ private:
 	std::vector<Server>			servers;
 	std::vector<struct pollfd>	pollFds;
 	std::map<int, Client>		clients;
+	std::map<int, Server*>		clientToServer;
 	std::map<int, std::string>	pendingResponses;
 	std::vector<int>			clientsToRemove;
 	bool						running;
@@ -32,6 +33,10 @@ private:
 	void	removeClient(int fd);
 	void	cleanupRemovedClients();
 	void	modifyPollEvents(int fd, short events);
+
+	std::string	buildFilePath(const Client & client, const ServerConfig & serverConfig);
+	bool		isDirectory(const std::string & path);
+	std::string	handleDirectoryPath(const std::string & dirPath, const ServerConfig & serverConfig);
 
 public:
 
