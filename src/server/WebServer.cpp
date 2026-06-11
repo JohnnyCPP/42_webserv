@@ -173,11 +173,16 @@ void WebServer::handlePollOut(struct pollfd current)
 	{
 		if (errno != EAGAIN && errno != EWOULDBLOCK)
 		{
+			logError(std::string("send() failed: ") + strerror(errno));
 			removeClient(current.fd);
 			pendingResponses.erase(it);
 		}
 		return;
 	}
+	stream.str("");
+	stream.clear();
+	stream << "webserv sent " << bytesSent << " bytes";
+	log(stream.str());
 	if (bytesSent == static_cast<ssize_t>(remaining))
 	{
 		pendingResponses.erase(it);
