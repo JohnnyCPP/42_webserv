@@ -11,6 +11,7 @@ Client::Client()
 	  headers(),
 	  body(""),
 	  contentLength(0),
+	  maxBodySize(WebServ::MAX_BODY_SIZE),
 	  headersComplete(false),
 	  requestComplete(false),
 	  chunked(false),
@@ -32,6 +33,7 @@ Client::Client(const Client & that)
 	  headers(that.headers),
 	  body(that.body),
 	  contentLength(that.contentLength),
+	  maxBodySize(that.contentLength),
 	  headersComplete(that.headersComplete),
 	  requestComplete(that.requestComplete),
 	  chunked(that.chunked),
@@ -49,6 +51,7 @@ Client::Client(int fd)
 	  headers(),
 	  body(""),
 	  contentLength(0),
+	  maxBodySize(WebServ::MAX_BODY_SIZE),
 	  headersComplete(false),
 	  requestComplete(false),
 	  chunked(false),
@@ -56,7 +59,7 @@ Client::Client(int fd)
 {
 }
 
-Client & Client::operator=(const Client & that)
+Client &	Client::operator=(const Client & that)
 {
 	if (this != &that)
 	{
@@ -69,6 +72,7 @@ Client & Client::operator=(const Client & that)
 		headers = that.headers;
 		body = that.body;
 		contentLength = that.contentLength;
+		maxBodySize = that.maxBodySize;
 		headersComplete = that.headersComplete;
 		requestComplete = that.requestComplete;
 		chunked = that.chunked;
@@ -77,97 +81,115 @@ Client & Client::operator=(const Client & that)
 	return (*this);
 }
 
-void Client::setFd(int fd)
+void	Client::setFd(int fd)
 {
 	this->fd = fd;
 }
 
-int Client::getFd() const
+int	Client::getFd() const
 {
 	return (fd);
 }
 
-const std::string & Client::getBuffer() const
+const std::string &	Client::getBuffer() const
 {
 	return (buffer);
 }
 
-void Client::appendToBuffer(const std::string & data)
+void	Client::appendToBuffer(const std::string & data)
 {
 	buffer += data;
 }
 
-void Client::clearBuffer()
+void	Client::clearBuffer()
 {
 	buffer.clear();
 }
 
-const std::string & Client::getRequestLine() const
+const std::string &	Client::getRequestLine() const
 {
 	return (requestLine);
 }
 
-const std::string & Client::getMethod() const
+const std::string &	Client::getMethod() const
 {
 	return (method);
 }
 
-const std::string & Client::getPath() const
+const std::string &	Client::getPath() const
 {
 	return (path);
 }
 
-const std::string & Client::getVersion() const
+const std::string &	Client::getVersion() const
 {
 	return (version);
 }
 
-const std::map<std::string, std::string> & Client::getHeaders() const
+const std::map<std::string, std::string> &	Client::getHeaders() const
 {
 	return (headers);
 }
 
-const std::string & Client::getBody() const
+const std::string &	Client::getBody() const
 {
 	return (body);
 }
 
-size_t Client::getContentLength() const
+size_t	Client::getContentLength() const
 {
 	return (contentLength);
 }
 
-bool Client::isHeadersComplete() const
+void	Client::setMaxBodySize(size_t size)
+{
+	maxBodySize = size;
+}
+
+size_t	Client::getMaxBodySize() const
+{
+	return (maxBodySize);
+}
+
+bool	Client::isBodySizeExceeded() const
+{
+	bool	result;
+
+	result = (error && contentLength > maxBodySize);
+	return (result);
+}
+
+bool	Client::isHeadersComplete() const
 {
 	return (headersComplete);
 }
 
-bool Client::isRequestComplete() const
+bool	Client::isRequestComplete() const
 {
 	return (requestComplete);
 }
 
-void Client::markRequestComplete()
+void	Client::markRequestComplete()
 {
 	requestComplete = true;
 }
 
-bool Client::isChunked() const
+bool	Client::isChunked() const
 {
 	return (chunked);
 }
 
-bool Client::hasError() const
+bool	Client::hasError() const
 {
 	return (error);
 }
 
-void Client::setError(bool isError)
+void	Client::setError(bool isError)
 {
 	error = isError;
 }
 
-void Client::parseRequest()
+void	Client::parseRequest()
 {
 	std::string	line;
 	size_t		headerEnd;
@@ -209,7 +231,7 @@ void Client::parseRequest()
 	extractBody();
 }
 
-void Client::resetForNextRequest()
+void	Client::resetForNextRequest()
 {
 	requestLine.clear();
 	method.clear();
@@ -232,7 +254,7 @@ void Client::resetForNextRequest()
  *  │     └────────────── path
  *  └──────────────────── method
  */
-void Client::parseRequestLine(const std::string & line)
+void	Client::parseRequestLine(const std::string & line)
 {
 	size_t	firstSpace;
 	size_t	secondSpace;
@@ -258,7 +280,7 @@ void Client::parseRequestLine(const std::string & line)
 		error = true;
 }
 
-void Client::parseHeaderLine(const std::string & line)
+void	Client::parseHeaderLine(const std::string & line)
 {
 	std::string	key;
 	std::string	value;
@@ -274,7 +296,7 @@ void Client::parseHeaderLine(const std::string & line)
 	headers[key] = value;
 }
 
-void Client::processHeaders()
+void	Client::processHeaders()
 {
 	std::map<std::string, std::string>::iterator	it;
 	std::stringstream								stream;
@@ -295,7 +317,7 @@ void Client::processHeaders()
 	}
 }
 
-void Client::extractBody()
+void	Client::extractBody()
 {
 	std::string	remaining;
 	size_t		headerEnd;
@@ -308,12 +330,22 @@ void Client::extractBody()
 	remaining = buffer.substr(headerEnd + 4);
 	if (chunked)
 	{
+		if (remaining.size() > maxBodySize)
+		{
+			error = true;
+			return;
+		}
 		body = remaining;
 		requestComplete = true;
 		return;
 	}
 	if (contentLength > 0)
 	{
+		if (contentLength > maxBodySize)
+		{
+			error = true;
+			return;
+		}
 		if (remaining.size() >= contentLength)
 		{
 			body = remaining.substr(0, contentLength);
@@ -324,7 +356,7 @@ void Client::extractBody()
 		requestComplete = true;
 }
 
-bool Client::isValidMethod(const std::string & method) const
+bool	Client::isValidMethod(const std::string & method) const
 {
 	size_t	i;
 	char	c;
@@ -345,12 +377,12 @@ bool Client::isValidMethod(const std::string & method) const
  * If HTTP/1.1, keepAlive = true (check Connection header for "close")
  * Chunked encoding is not supported in HTTP/1.0 (HTTP/1.1 only)
  */
-bool Client::isValidVersion(const std::string & version) const
+bool	Client::isValidVersion(const std::string & version) const
 {
 	return (version == "HTTP/1.0" || version == "HTTP/1.1");
 }
 
-void Client::resetParseState()
+void	Client::resetParseState()
 {
 	std::string	remaining;
 	size_t		headerEnd;

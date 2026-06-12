@@ -27,7 +27,7 @@ ServerConfig::ServerConfig(const ServerConfig & that)
 {
 }
 
-ServerConfig & ServerConfig::operator=(const ServerConfig & that)
+ServerConfig &	ServerConfig::operator=(const ServerConfig & that)
 {
 	if (this != &that)
 	{
@@ -42,82 +42,82 @@ ServerConfig & ServerConfig::operator=(const ServerConfig & that)
 	return (*this);
 }
 
-void ServerConfig::addListenAddress(const std::string & address)
+void	ServerConfig::addListenAddress(const std::string & address)
 {
 	listenAddresses.push_back(address);
 }
 
-void ServerConfig::setListenAddresses(const std::vector<std::string> & addresses)
+void	ServerConfig::setListenAddresses(const std::vector<std::string> & addresses)
 {
 	listenAddresses = addresses;
 }
 
-void ServerConfig::setServerName(const std::string & name)
+void	ServerConfig::setServerName(const std::string & name)
 {
 	serverName = name;
 }
 
-void ServerConfig::setClientMaxBodySize(size_t size)
+void	ServerConfig::setClientMaxBodySize(size_t size)
 {
 	clientMaxBodySize = size;
 }
 
-void ServerConfig::addErrorPage(int code, const std::string & path)
+void	ServerConfig::addErrorPage(int code, const std::string & path)
 {
 	errorPages[code] = path;
 }
 
-void ServerConfig::setRoot(const std::string & newRoot)
+void	ServerConfig::setRoot(const std::string & newRoot)
 {
 	root = newRoot;
 }
 
-void ServerConfig::setIndex(const std::string & newIndex)
+void	ServerConfig::setIndex(const std::string & newIndex)
 {
 	indexFile = newIndex;
 }
 
-void ServerConfig::addLocation(const LocationConfig & location)
+void	ServerConfig::addLocation(const LocationConfig & location)
 {
 	locations.push_back(location);
 }
 
-const std::vector<std::string> & ServerConfig::getListenAddresses() const
+const std::vector<std::string> &	ServerConfig::getListenAddresses() const
 {
 	return (listenAddresses);
 }
 
-const std::string & ServerConfig::getServerName() const
+const std::string &	ServerConfig::getServerName() const
 {
 	return (serverName);
 }
 
-size_t ServerConfig::getClientMaxBodySize() const
+size_t	ServerConfig::getClientMaxBodySize() const
 {
 	return (clientMaxBodySize);
 }
 
-const std::map<int, std::string> & ServerConfig::getErrorPages() const
+const std::map<int, std::string> &	ServerConfig::getErrorPages() const
 {
 	return (errorPages);
 }
 
-const std::string & ServerConfig::getRoot() const
+const std::string &	ServerConfig::getRoot() const
 {
 	return (root);
 }
 
-const std::string & ServerConfig::getIndex() const
+const std::string &	ServerConfig::getIndex() const
 {
 	return (indexFile);
 }
 
-const std::vector<LocationConfig> & ServerConfig::getLocations() const
+const std::vector<LocationConfig> &	ServerConfig::getLocations() const
 {
 	return (locations);
 }
 
-const LocationConfig * ServerConfig::matchLocation(const std::string & requestPath) const
+const LocationConfig *	ServerConfig::matchLocation(const std::string & requestPath) const
 {
 	const LocationConfig *	bestMatch;
 	size_t					maxMatched;

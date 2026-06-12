@@ -20,7 +20,7 @@ HttpResponse::HttpResponse(const HttpResponse & that)
 {
 }
 
-HttpResponse & HttpResponse::operator=(const HttpResponse & that)
+HttpResponse &	HttpResponse::operator=(const HttpResponse & that)
 {
 	if (this != &that)
 	{
@@ -32,24 +32,24 @@ HttpResponse & HttpResponse::operator=(const HttpResponse & that)
 	return (*this);
 }
 
-void HttpResponse::setStatus(int code)
+void	HttpResponse::setStatus(int code)
 {
 	statusCode = code;
 	statusMessage = getDefaultMessage(code);
 }
 
-void HttpResponse::setStatus(int code, const std::string & message)
+void	HttpResponse::setStatus(int code, const std::string & message)
 {
 	statusCode = code;
 	statusMessage = message;
 }
 
-void HttpResponse::setHeader(const std::string & key, const std::string & value)
+void	HttpResponse::setHeader(const std::string & key, const std::string & value)
 {
 	headers[key] = value;
 }
 
-void HttpResponse::setBody(const std::string & body)
+void	HttpResponse::setBody(const std::string & body)
 {
 	std::ostringstream	contentLength;
 
@@ -58,7 +58,7 @@ void HttpResponse::setBody(const std::string & body)
 	headers["Content-Length"] = contentLength.str();
 }
 
-void HttpResponse::setBodyFromFile(const std::string & path)
+void	HttpResponse::setBodyFromFile(const std::string & path)
 {
 	std::stringstream	buffer;
 	std::ifstream		file;
@@ -78,7 +78,7 @@ void HttpResponse::setBodyFromFile(const std::string & path)
 	setContentType(path);
 }
 
-void HttpResponse::setContentType(const std::string & path)
+void	HttpResponse::setContentType(const std::string & path)
 {
 	std::string	extension;
 	size_t	dotPos;
@@ -112,7 +112,7 @@ void HttpResponse::setContentType(const std::string & path)
 		headers["Content-Type"] = "application/octet-stream";
 }
 
-std::string HttpResponse::toString() const
+std::string	HttpResponse::toString() const
 {
 	std::string	result;
 
@@ -124,12 +124,12 @@ std::string HttpResponse::toString() const
 	return (result);
 }
 
-int HttpResponse::getStatusCode() const
+int	HttpResponse::getStatusCode() const
 {
 	return (statusCode);
 }
 
-void HttpResponse::clear()
+void	HttpResponse::clear()
 {
 	headers.clear();
 	body.clear();
@@ -137,7 +137,7 @@ void HttpResponse::clear()
 	statusCode = 200;
 }
 
-std::string HttpResponse::getStatusLine() const
+std::string	HttpResponse::getStatusLine() const
 {
 	std::ostringstream	line;
 
@@ -147,7 +147,7 @@ std::string HttpResponse::getStatusLine() const
 	return (line.str());
 }
 
-std::string HttpResponse::getHeadersString() const
+std::string	HttpResponse::getHeadersString() const
 {
 	std::map<std::string, std::string>::const_iterator	it;
 	std::string											result;
@@ -161,7 +161,12 @@ std::string HttpResponse::getHeadersString() const
 	return (result);
 }
 
-std::string HttpResponse::getDefaultMessage(int code) const
+const std::map<std::string, std::string> &	HttpResponse::getHeaders() const
+{
+	return (headers);
+}
+
+std::string	HttpResponse::getDefaultMessage(int code) const
 {
 	switch (code)
 	{
@@ -182,7 +187,7 @@ std::string HttpResponse::getDefaultMessage(int code) const
 	}
 }
 
-std::string HttpResponse::getDefaultBody(int code) const
+std::string	HttpResponse::getDefaultBody(int code) const
 {
 	std::string	body;
 
@@ -226,7 +231,7 @@ std::string HttpResponse::getDefaultBody(int code) const
 	return (body);
 }
 
-std::string HttpResponse::getContentType(const std::string & path) const
+std::string	HttpResponse::getContentType(const std::string & path) const
 {
 	std::string	extension;
 	size_t		dotPos;
@@ -256,7 +261,7 @@ std::string HttpResponse::getContentType(const std::string & path) const
 	return ("application/octet-stream");
 }
 
-HttpResponse HttpResponse::ok(const std::string & body)
+HttpResponse	HttpResponse::ok(const std::string & body)
 {
 	HttpResponse	response;
 
@@ -265,7 +270,7 @@ HttpResponse HttpResponse::ok(const std::string & body)
 	return (response);
 }
 
-HttpResponse HttpResponse::created(const std::string & location)
+HttpResponse	HttpResponse::created(const std::string & location)
 {
 	HttpResponse	response;
 
@@ -274,7 +279,7 @@ HttpResponse HttpResponse::created(const std::string & location)
 	return (response);
 }
 
-HttpResponse HttpResponse::noContent()
+HttpResponse	HttpResponse::noContent()
 {
 	HttpResponse	response;
 
@@ -282,7 +287,7 @@ HttpResponse HttpResponse::noContent()
 	return (response);
 }
 
-HttpResponse HttpResponse::movedPermanently(const std::string & location)
+HttpResponse	HttpResponse::movedPermanently(const std::string & location)
 {
 	HttpResponse	response;
 
@@ -292,7 +297,7 @@ HttpResponse HttpResponse::movedPermanently(const std::string & location)
 	return (response);
 }
 
-HttpResponse HttpResponse::found(const std::string & location)
+HttpResponse	HttpResponse::found(const std::string & location)
 {
 	HttpResponse	response;
 
@@ -302,7 +307,7 @@ HttpResponse HttpResponse::found(const std::string & location)
 	return (response);
 }
 
-HttpResponse HttpResponse::badRequest()
+HttpResponse	HttpResponse::badRequest()
 {
 	HttpResponse	response;
 
@@ -312,7 +317,7 @@ HttpResponse HttpResponse::badRequest()
 	return (response);
 }
 
-HttpResponse HttpResponse::forbidden()
+HttpResponse	HttpResponse::forbidden()
 {
 	HttpResponse	response;
 
@@ -322,7 +327,7 @@ HttpResponse HttpResponse::forbidden()
 	return (response);
 }
 
-HttpResponse HttpResponse::notFound()
+HttpResponse	HttpResponse::notFound()
 {
 	HttpResponse	response;
 
@@ -332,7 +337,7 @@ HttpResponse HttpResponse::notFound()
 	return (response);
 }
 
-HttpResponse HttpResponse::methodNotAllowed(const std::string & allowedMethods)
+HttpResponse	HttpResponse::methodNotAllowed(const std::string & allowedMethods)
 {
 	HttpResponse	response;
 
@@ -343,7 +348,7 @@ HttpResponse HttpResponse::methodNotAllowed(const std::string & allowedMethods)
 	return (response);
 }
 
-HttpResponse HttpResponse::payloadTooLarge()
+HttpResponse	HttpResponse::payloadTooLarge()
 {
 	HttpResponse	response;
 
@@ -353,7 +358,7 @@ HttpResponse HttpResponse::payloadTooLarge()
 	return (response);
 }
 
-HttpResponse HttpResponse::internalServerError()
+HttpResponse	HttpResponse::internalServerError()
 {
 	HttpResponse	response;
 
@@ -363,7 +368,7 @@ HttpResponse HttpResponse::internalServerError()
 	return (response);
 }
 
-HttpResponse HttpResponse::notImplemented()
+HttpResponse	HttpResponse::notImplemented()
 {
 	HttpResponse	response;
 
@@ -373,7 +378,7 @@ HttpResponse HttpResponse::notImplemented()
 	return (response);
 }
 
-HttpResponse HttpResponse::versionNotSupported()
+HttpResponse	HttpResponse::versionNotSupported()
 {
 	HttpResponse	response;
 

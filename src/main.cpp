@@ -5,7 +5,7 @@
 
 volatile sig_atomic_t	g_running = true;
 
-void signalHandler(int signal)
+void	signalHandler(int signal)
 {
 	(void) signal;
 	log("received shutdown signal, exiting...");

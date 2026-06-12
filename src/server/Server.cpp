@@ -65,7 +65,7 @@ Server &	Server::operator=(const Server & that)
  *
  * They can be checked with "errno" on recv() calls.
  */
-void Server::makeNonBlocking(int fd)
+void	Server::makeNonBlocking(int fd)
 {
 	int	flags;
 
@@ -82,7 +82,7 @@ void Server::makeNonBlocking(int fd)
 	}
 }
 
-void Server::parseListenAddress(const std::string & addr, std::string & host, int & port)
+void	Server::parseListenAddress(const std::string & addr, std::string & host, int & port)
 {
 	size_t	colonPos;
 	bool	isAllDigits;
@@ -182,7 +182,7 @@ void Server::parseListenAddress(const std::string & addr, std::string & host, in
  * SO_REUSEADDR instructs the OS: 
  * "Allow to reuse this port even if it's in TIME_WAIT"
  */
-void Server::bindSocket()
+void	Server::bindSocket()
 {
 	std::ostringstream	info_stream;
 	std::ostringstream	error_stream;
@@ -249,7 +249,7 @@ void Server::bindSocket()
 			isBound = true;
 			info_stream.str("");
 			info_stream.clear();
-			info_stream << "the server named a socket whose fd is " << bindFd;
+			info_stream << "a server named a socket whose fd is " << bindFd;
 			log(info_stream.str());
 			break;
 		}
@@ -286,7 +286,7 @@ void Server::bindSocket()
  *   |                              |    and creates client socket
  *   |<--- HTTP Response -----------|
  */
-void Server::startListening()
+void	Server::startListening()
 {
 	std::ostringstream	stream;
 
@@ -300,7 +300,7 @@ void Server::startListening()
 	log(stream.str());
 }
 
-const ServerConfig&	Server::getConfig() const
+const ServerConfig &	Server::getConfig() const
 {
 	return (config);
 }
@@ -309,7 +309,7 @@ const ServerConfig&	Server::getConfig() const
  * struct sockaddr_in is declared so that client 
  * information (IP address, port) can be extracted from it.
  */
-int Server::acceptConnection()
+int	Server::acceptConnection()
 {
 	struct sockaddr_in	clientAddr;
 	std::ostringstream	error_stream;
@@ -335,7 +335,7 @@ int Server::acceptConnection()
 	return (clientFd);
 }
 
-void Server::setup()
+void	Server::setup()
 {
 	bindSocket();
 	if (listenFd == -1)
@@ -346,7 +346,7 @@ void Server::setup()
 	startListening();
 }
 
-int Server::getListenFd() const
+int	Server::getListenFd() const
 {
 	return (listenFd);
 }

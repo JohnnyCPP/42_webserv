@@ -23,14 +23,14 @@ public:
 	LocationConfig(const LocationConfig & that);
 	LocationConfig & operator=(const LocationConfig & that);
 
-	void				setPath(const std::string & newPath);
-	void				addAllowedMethod(const std::string & method);
-	void				setRedirect(const std::string & newRedirect);
-	void				setRoot(const std::string & newRoot);
-	void				setAutoindex(bool newAutoindex);
-	void				setIndex(const std::string & newIndex);
-	void				setUploadStore(const std::string & newUploadStore);
-	void				addCgiExtension(const std::string & ext);
+	void								setPath(const std::string & newPath);
+	void								addAllowedMethod(const std::string & method);
+	void								setRedirect(const std::string & newRedirect);
+	void								setRoot(const std::string & newRoot);
+	void								setAutoindex(bool newAutoindex);
+	void								setIndex(const std::string & newIndex);
+	void								setUploadStore(const std::string & newUploadStore);
+	void								addCgiExtension(const std::string & ext);
 
 	const std::string &					getPath() const;
 	const std::vector<std::string> &	getAllowedMethods() const;

@@ -16,18 +16,19 @@ private:
 	std::map<std::string, std::string>	headers;
 	std::string							body;
 	size_t								contentLength;
+	size_t								maxBodySize;
 	bool								headersComplete;
 	bool								requestComplete;
 	bool								chunked;
 	bool								error;
 
-	void	parseRequestLine(const std::string & line);
-	void	parseHeaderLine(const std::string & line);
-	void	processHeaders();
-	void	extractBody();
-	bool	isValidMethod(const std::string & method) const;
-	bool	isValidVersion(const std::string & version) const;
-	void	resetParseState();
+	void										parseRequestLine(const std::string & line);
+	void										parseHeaderLine(const std::string & line);
+	void										processHeaders();
+	void										extractBody();
+	bool										isValidMethod(const std::string & method) const;
+	bool										isValidVersion(const std::string & version) const;
+	void										resetParseState();
 
 public:
 
@@ -49,6 +50,9 @@ public:
 	const std::map<std::string, std::string> &	getHeaders() const;
 	const std::string & 						getBody() const;
 	size_t										getContentLength() const;
+	void										setMaxBodySize(size_t size);
+	size_t										getMaxBodySize() const;
+	bool										isBodySizeExceeded() const;
 	bool										isHeadersComplete() const;
 	bool										isRequestComplete() const;
 	void										markRequestComplete();
