@@ -16,6 +16,7 @@ private:
 	std::map<std::string, std::string>	headers;
 	std::string							body;
 	size_t								contentLength;
+	size_t								maxBodySize;
 	bool								headersComplete;
 	bool								requestComplete;
 	bool								chunked;
@@ -49,6 +50,9 @@ public:
 	const std::map<std::string, std::string> &	getHeaders() const;
 	const std::string & 						getBody() const;
 	size_t										getContentLength() const;
+	void										setMaxBodySize(size_t size);
+	size_t										getMaxBodySize() const;
+	bool										isBodySizeExceeded() const;
 	bool										isHeadersComplete() const;
 	bool										isRequestComplete() const;
 	void										markRequestComplete();

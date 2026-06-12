@@ -242,15 +242,23 @@ void	WebServer::handlePollErr(struct pollfd current)
  */
 void	WebServer::handleClientRead(int fd)
 {
-	std::map<int, Client>::iterator	it;
-	std::ostringstream				stream;
-	char							buffer[WebServ::RECV_BUFFER_SIZE];
-	ssize_t							bytesRead;
-	bool							keepReading;
+	std::map<int, Server*>::iterator	serverIt;
+	std::map<int, Client>::iterator		it;
+	std::ostringstream					stream;
+	ssize_t								bytesRead;
+	size_t								maxSize;
+	char								buffer[WebServ::RECV_BUFFER_SIZE];
+	bool								keepReading;
 
 	it = clients.find(fd);
 	if (it == clients.end())
 		return;
+	serverIt = clientToServer.find(fd);
+	if (serverIt != clientToServer.end())
+	{
+		maxSize = serverIt->second->getConfig().getClientMaxBodySize();
+		it->second.setMaxBodySize(maxSize);
+	}
 	stream << "webserv is reading a client request on socket " << fd;
 	log(stream.str());
 	keepReading = true;
@@ -298,6 +306,7 @@ void	WebServer::processClientRequest(int fd)
 	std::ostringstream				stream;
 	RequestContext					context;
 	HttpResponse					response;
+	std::string						allowedHeader;
 	std::string						indexPath;
 	std::string						autoindexHTML;
 	std::string						requestURI;
@@ -316,20 +325,31 @@ void	WebServer::processClientRequest(int fd)
 	if (!isMethodAllowed(context, clientIt->second.getMethod()))
 	{
 		logError("method not allowed");
-		response = HttpResponse::methodNotAllowed("");
+		allowedHeader = generateAllowedMethodsHeader(context);
+		response = HttpResponse::methodNotAllowed(allowedHeader);
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
 		return;
 	}
-	handleRedirect(context, response);
 	if (context.hasRedirect())
 	{
+		handleRedirect(context, response);
 		log(std::string("redirecting to ") + response.getHeaders().find("Location")->second);
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
 		return;
 	}
 	resolveFilesystemPath(context);
+	if (client->getMethod() == "POST")
+	{
+		handlePostRequest(fd, context, *client);
+		return;
+	}
+	if (client->getMethod() == "DELETE")
+	{
+		handleDeleteRequest(fd, context);
+		return;
+	}
 	if (stat(context.getResolvedPath().c_str(), &statbuf) != 0)
 	{
 		log(std::string("resource ") + context.getResolvedPath() + std::string(" was not found"));
@@ -801,6 +821,149 @@ std::string	WebServer::escapeHtml(const std::string & str)
 		++i;
 	}
 	return (result);
+}
+
+bool	WebServer::validateBodySize(const Client & client, HttpResponse & response)
+{
+	bool	result;
+
+	result = true;
+	if (client.isBodySizeExceeded())
+	{
+		response = HttpResponse::payloadTooLarge();
+		result = false;
+	}
+	return (result);
+}
+
+std::string	WebServer::getUploadPath(const RequestContext & context)
+{
+	std::ostringstream	stream;
+	std::string			uploadPath;
+	std::string			filename;
+	size_t				lastSlash;
+
+	if (context.getMatchedLocation() != NULL && !context.getMatchedLocation()->getUploadStore().empty())
+		uploadPath = context.getMatchedLocation()->getUploadStore();
+	else
+		uploadPath = WebServ::DEFAULT_UPLOADS;
+	if (uploadPath[uploadPath.length() - 1] != '/')
+		uploadPath += '/';
+	filename = context.getRequestPath();
+	lastSlash = filename.rfind('/');
+	if (lastSlash != std::string::npos)
+		filename = filename.substr(lastSlash + 1);
+	if (filename.empty())
+	{
+		stream << time(NULL);
+		filename = stream.str();
+	}
+	uploadPath += filename;
+	return (uploadPath);
+}
+
+std::string	WebServer::generateAllowedMethodsHeader(const RequestContext & context)
+{
+	const std::vector<std::string> *	allowedMethods;
+	std::string							result;
+	size_t								i;
+
+	if (context.getMatchedLocation() == NULL)
+		return ("GET, POST, DELETE");
+	allowedMethods = &(context.getMatchedLocation()->getAllowedMethods());
+	i = 0;
+	while (i < allowedMethods->size())
+	{
+		if (i > 0)
+			result += ", ";
+		result += (*allowedMethods)[i];
+		++i;
+	}
+	return (result);
+}
+
+/**
+ * The flag std::ios::out opens a file for writing.
+ *
+ * The flag std::ios::binary opens a file in binary mode:
+ *
+ * When a file is opened in C++, there are two modes 
+ * for handling newline characters:
+ *
+ * - text mode (default): On Windows, \n gets converted to \r\n on write. 
+ *                        On Unix-like systems (Linux, macOS), 
+ *                        no conversion happens.
+ *
+ * - binary mode: No newline conversion. Bytes are written as given.
+ */
+void	WebServer::handlePostRequest(int fd, RequestContext & context, Client & client)
+{
+	std::ofstream	file;
+	HttpResponse	response;
+	std::string		uploadPath;
+
+	if (!validateBodySize(client, response))
+	{
+		pendingResponses[fd] = response.toString();
+		modifyPollEvents(fd, POLLOUT);
+		return;
+	}
+	if (context.getMatchedLocation() == NULL || context.getMatchedLocation()->getUploadStore().empty())
+	{
+		response = HttpResponse::notImplemented();
+		pendingResponses[fd] = response.toString();
+		modifyPollEvents(fd, POLLOUT);
+		return;
+	}
+	uploadPath = getUploadPath(context);
+	file.open(uploadPath.c_str(), std::ios::out | std::ios::binary);
+	if (!file.is_open())
+	{
+		response = HttpResponse::internalServerError();
+		pendingResponses[fd] = response.toString();
+		modifyPollEvents(fd, POLLOUT);
+		return;
+	}
+	file.write(client.getBody().c_str(), client.getBody().size());
+	file.close();
+	response = HttpResponse::created(uploadPath);
+	pendingResponses[fd] = response.toString();
+	modifyPollEvents(fd, POLLOUT);
+	log(std::string("uploaded file to ") + uploadPath);
+}
+
+void	WebServer::handleDeleteRequest(int fd, RequestContext & context)
+{
+	HttpResponse	response;
+	std::string		targetPath;
+	struct stat		statbuf;
+
+	targetPath = context.getResolvedPath();
+	if (stat(targetPath.c_str(), &statbuf) != 0)
+	{
+		response = HttpResponse::notFound();
+		pendingResponses[fd] = response.toString();
+		modifyPollEvents(fd, POLLOUT);
+		return;
+	}
+	if (access(targetPath.c_str(), W_OK) != 0)
+	{
+		response = HttpResponse::forbidden();
+		pendingResponses[fd] = response.toString();
+		modifyPollEvents(fd, POLLOUT);
+		return;
+	}
+	if (unlink(targetPath.c_str()) != 0)
+	{
+		response = HttpResponse::internalServerError();
+		pendingResponses[fd] = response.toString();
+		modifyPollEvents(fd, POLLOUT);
+		return;
+	}
+	response = HttpResponse::noContent();
+	pendingResponses[fd] = response.toString();
+	modifyPollEvents(fd, POLLOUT);
+	log(std::string("deleted file ") + targetPath);
 }
 
 /**

@@ -11,6 +11,7 @@ Client::Client()
 	  headers(),
 	  body(""),
 	  contentLength(0),
+	  maxBodySize(WebServ::MAX_BODY_SIZE),
 	  headersComplete(false),
 	  requestComplete(false),
 	  chunked(false),
@@ -32,6 +33,7 @@ Client::Client(const Client & that)
 	  headers(that.headers),
 	  body(that.body),
 	  contentLength(that.contentLength),
+	  maxBodySize(that.contentLength),
 	  headersComplete(that.headersComplete),
 	  requestComplete(that.requestComplete),
 	  chunked(that.chunked),
@@ -49,6 +51,7 @@ Client::Client(int fd)
 	  headers(),
 	  body(""),
 	  contentLength(0),
+	  maxBodySize(WebServ::MAX_BODY_SIZE),
 	  headersComplete(false),
 	  requestComplete(false),
 	  chunked(false),
@@ -69,6 +72,7 @@ Client &	Client::operator=(const Client & that)
 		headers = that.headers;
 		body = that.body;
 		contentLength = that.contentLength;
+		maxBodySize = that.maxBodySize;
 		headersComplete = that.headersComplete;
 		requestComplete = that.requestComplete;
 		chunked = that.chunked;
@@ -135,6 +139,24 @@ const std::string &	Client::getBody() const
 size_t	Client::getContentLength() const
 {
 	return (contentLength);
+}
+
+void	Client::setMaxBodySize(size_t size)
+{
+	maxBodySize = size;
+}
+
+size_t	Client::getMaxBodySize() const
+{
+	return (maxBodySize);
+}
+
+bool	Client::isBodySizeExceeded() const
+{
+	bool	result;
+
+	result = (error && contentLength > maxBodySize);
+	return (result);
 }
 
 bool	Client::isHeadersComplete() const
@@ -308,12 +330,22 @@ void	Client::extractBody()
 	remaining = buffer.substr(headerEnd + 4);
 	if (chunked)
 	{
+		if (remaining.size() > maxBodySize)
+		{
+			error = true;
+			return;
+		}
 		body = remaining;
 		requestComplete = true;
 		return;
 	}
 	if (contentLength > 0)
 	{
+		if (contentLength > maxBodySize)
+		{
+			error = true;
+			return;
+		}
 		if (remaining.size() >= contentLength)
 		{
 			body = remaining.substr(0, contentLength);

@@ -9,6 +9,7 @@ namespace WebServ
 	const std::string	DEFAULT_CONFIG_PATH = "./config/complete.conf";
 	const std::string	DEFAULT_HOST = "0.0.0.0";
 	const std::string	DEFAULT_INDEX = "index.html";
+	const std::string	DEFAULT_UPLOADS = "./uploads";
 	const std::string	HTTP_VERSION = "HTTP/1.1";
 	const std::string	HTTP_VERSION_LEGACY = "HTTP/1.0";
 	const std::string	WS_LOG = "[webserv]";
