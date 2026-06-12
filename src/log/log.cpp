@@ -31,7 +31,7 @@ void	logConfig(const Config & config)
 	{
 		stream.str("");
 		stream.clear();
-		stream << "server " << i << " it's logging the configuration";
+		stream << "logging configuration of server " << i;
 		log(stream.str());
 		stream.str("");
 		stream.clear();

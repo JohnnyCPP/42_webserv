@@ -3,6 +3,7 @@
 
 # include "webserv.hpp"
 # include "constants.hpp"
+# include "config/ServerConfig.hpp"
 # include <fstream>
 # include <sstream>
 
@@ -20,6 +21,8 @@ private:
 	std::string	getContentType(const std::string & path) const;
 	std::string	getStatusLine() const;
 	std::string	getHeadersString() const;
+	std::string	loadErrorPage(int code, const ServerConfig * config) const;
+	bool		fileExists(const std::string & path) const;
 
 public:
 
@@ -45,14 +48,14 @@ public:
 	static HttpResponse noContent();
 	static HttpResponse movedPermanently(const std::string & location);
 	static HttpResponse found(const std::string & location);
-	static HttpResponse badRequest();
-	static HttpResponse forbidden();
-	static HttpResponse notFound();
-	static HttpResponse methodNotAllowed(const std::string & allowedMethods);
-	static HttpResponse payloadTooLarge();
-	static HttpResponse internalServerError();
-	static HttpResponse notImplemented();
-	static HttpResponse versionNotSupported();
+	static HttpResponse badRequest(const ServerConfig * config);
+	static HttpResponse forbidden(const ServerConfig * config);
+	static HttpResponse notFound(const ServerConfig * config);
+	static HttpResponse methodNotAllowed(const std::string & allowedMethods, const ServerConfig * config);
+	static HttpResponse payloadTooLarge(const ServerConfig * config);
+	static HttpResponse internalServerError(const ServerConfig * config);
+	static HttpResponse notImplemented(const ServerConfig * config);
+	static HttpResponse versionNotSupported(const ServerConfig * config);
 };
 
 #endif

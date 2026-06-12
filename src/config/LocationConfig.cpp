@@ -3,6 +3,7 @@
 LocationConfig::LocationConfig()
 	: path(""),
 	  allowedMethods(),
+	  redirectCode(""),
 	  redirect(""),
 	  root(""),
 	  autoindex(false),
@@ -19,6 +20,7 @@ LocationConfig::~LocationConfig()
 LocationConfig::LocationConfig(const LocationConfig & that)
 	: path(that.path),
 	  allowedMethods(that.allowedMethods),
+	  redirectCode(that.redirectCode),
 	  redirect(that.redirect),
 	  root(that.root),
 	  autoindex(that.autoindex),
@@ -34,6 +36,7 @@ LocationConfig &	LocationConfig::operator=(const LocationConfig & that)
 	{
 		path = that.path;
 		allowedMethods = that.allowedMethods;
+		redirectCode = that.redirectCode;
 		redirect = that.redirect;
 		root = that.root;
 		autoindex = that.autoindex;
@@ -52,6 +55,11 @@ void	LocationConfig::setPath(const std::string & newPath)
 void	LocationConfig::addAllowedMethod(const std::string & method)
 {
 	allowedMethods.push_back(method);
+}
+
+void	LocationConfig::setRedirectCode(const std::string & newCode)
+{
+	redirectCode = newCode;
 }
 
 void	LocationConfig::setRedirect(const std::string & newRedirect)
@@ -92,6 +100,11 @@ const std::string &	LocationConfig::getPath() const
 const std::vector<std::string> &	LocationConfig::getAllowedMethods() const
 {
 	return (allowedMethods);
+}
+
+const std::string &	LocationConfig::getRedirectCode() const
+{
+	return (redirectCode);
 }
 
 const std::string &	LocationConfig::getRedirect() const

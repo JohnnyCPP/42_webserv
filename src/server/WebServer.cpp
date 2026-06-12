@@ -245,20 +245,14 @@ void	WebServer::handleClientRead(int fd)
 	std::map<int, Server*>::iterator	serverIt;
 	std::map<int, Client>::iterator		it;
 	std::ostringstream					stream;
+	HttpResponse						response;
 	ssize_t								bytesRead;
-	size_t								maxSize;
 	char								buffer[WebServ::RECV_BUFFER_SIZE];
 	bool								keepReading;
 
 	it = clients.find(fd);
 	if (it == clients.end())
 		return;
-	serverIt = clientToServer.find(fd);
-	if (serverIt != clientToServer.end())
-	{
-		maxSize = serverIt->second->getConfig().getClientMaxBodySize();
-		it->second.setMaxBodySize(maxSize);
-	}
 	stream << "webserv is reading a client request on socket " << fd;
 	log(stream.str());
 	keepReading = true;
@@ -284,16 +278,23 @@ void	WebServer::handleClientRead(int fd)
 		else
 			keepReading = false;
 	}
-	if (it->second.isRequestComplete())
-		processClientRequest(fd);
-	else if (it->second.hasError())
+	if (it->second.hasError())
 	{
 		stream.str("");
 		stream.clear();
 		stream << "webserv detected an error with client socket " << fd;
 		logError(stream.str());
-		removeClient(fd);
+		serverIt = clientToServer.find(fd);
+		if (serverIt != clientToServer.end())
+			response = HttpResponse::badRequest(&(serverIt->second->getConfig()));
+		else
+			response = HttpResponse::badRequest(NULL);
+		pendingResponses[fd] = response.toString();
+		modifyPollEvents(fd, POLLOUT);
+		return;
 	}
+	if (it->second.isRequestComplete())
+		processClientRequest(fd);
 }
 
 /**
@@ -322,11 +323,27 @@ void	WebServer::processClientRequest(int fd)
 	client = &clientIt->second;
 	stream << client->getMethod() << " " << client->getPath() << " " << client->getVersion();
 	log(stream.str());
-	if (!isMethodAllowed(context, clientIt->second.getMethod()))
+	if (client->getVersion() != WebServ::HTTP_VERSION)
 	{
-		logError("method not allowed");
+		logError("505 version not supported");
+		response = HttpResponse::versionNotSupported(context.getTargetServer());
+		pendingResponses[fd] = response.toString();
+		modifyPollEvents(fd, POLLOUT);
+		return;
+	}
+	if (client->getMethod() != "GET" && client->getMethod() != "POST" && client->getMethod() != "DELETE")
+	{
+		logError("501 not implemented");
+		response = HttpResponse::notImplemented(context.getTargetServer());
+		pendingResponses[fd] = response.toString();
+		modifyPollEvents(fd, POLLOUT);
+		return;
+	}
+	if (!isMethodAllowed(context, client->getMethod()))
+	{
+		logError("405 method not allowed");
 		allowedHeader = generateAllowedMethodsHeader(context);
-		response = HttpResponse::methodNotAllowed(allowedHeader);
+		response = HttpResponse::methodNotAllowed(allowedHeader, context.getTargetServer());
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
 		return;
@@ -334,7 +351,10 @@ void	WebServer::processClientRequest(int fd)
 	if (context.hasRedirect())
 	{
 		handleRedirect(context, response);
-		log(std::string("redirecting to ") + response.getHeaders().find("Location")->second);
+		stream.str("");
+		stream.clear();
+		stream << response.getStatusCode() << " redirected to " << response.getHeaders().find("Location")->second;
+		log(stream.str());
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
 		return;
@@ -352,8 +372,8 @@ void	WebServer::processClientRequest(int fd)
 	}
 	if (stat(context.getResolvedPath().c_str(), &statbuf) != 0)
 	{
-		log(std::string("resource ") + context.getResolvedPath() + std::string(" was not found"));
-		response = HttpResponse::notFound();
+		logError(std::string("404 resource ") + context.getResolvedPath() + std::string(" was not found"));
+		response = HttpResponse::notFound(context.getTargetServer());
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
 		return;
@@ -386,17 +406,23 @@ void	WebServer::processClientRequest(int fd)
 				response.setBody(autoindexHTML);
 				pendingResponses[fd] = response.toString();
 				modifyPollEvents(fd, POLLOUT);
-				log(std::string("generated autoindex for ") + context.getResolvedPath());
+				log(std::string("200 generated autoindex for ") + context.getResolvedPath());
 				return;
 			}
 		}
 		else
-			log("autoindex is disabled");
+		{
+			logError("403 autoindex is disabled");
+			response = HttpResponse::forbidden(context.getTargetServer());
+			pendingResponses[fd] = response.toString();
+			modifyPollEvents(fd, POLLOUT);
+			return;
+		}
 		context.setResolvedPath(handleDirectoryPath(context));
 		if (stat(context.getResolvedPath().c_str(), &statbuf) != 0)
 		{
 			logError(std::string("resource ") + context.getResolvedPath() + std::string(" was not found"));
-			response = HttpResponse::notFound();
+			response = HttpResponse::notFound(context.getTargetServer());
 			pendingResponses[fd] = response.toString();
 			modifyPollEvents(fd, POLLOUT);
 			return;
@@ -405,7 +431,7 @@ void	WebServer::processClientRequest(int fd)
 	if (!S_ISREG(statbuf.st_mode))
 	{
 		log(std::string("resource ") + context.getResolvedPath() + std::string(" is not a regular file. It may be a device, socket, symlink, or other"));
-		response = HttpResponse::forbidden();
+		response = HttpResponse::forbidden(context.getTargetServer());
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
 		return;
@@ -580,33 +606,22 @@ void	WebServer::resolveFilesystemPath(RequestContext & context)
  */
 void	WebServer::handleRedirect(const RequestContext & context, HttpResponse & response)
 {
-	std::string	redirectTarget;
+	std::string	redirectCode;
+	std::string	redirectPath;
 	int			statusCode;
 
 	if (!context.hasRedirect())
 		return;
-	redirectTarget = context.getMatchedLocation()->getRedirect();
-	statusCode = 301;
-	if (redirectTarget.find("302") == 0)
-	{
+	redirectCode = context.getMatchedLocation()->getRedirectCode();
+	redirectPath = context.getMatchedLocation()->getRedirect();
+	if (redirectCode == "302")
 		statusCode = 302;
-		if (redirectTarget.length() > 4)
-			redirectTarget = redirectTarget.substr(4);
-		else
-			redirectTarget = "/";
-	}
-	else if (redirectTarget.find("301") == 0)
-	{
-		statusCode = 301;
-		if (redirectTarget.length() > 4)
-			redirectTarget = redirectTarget.substr(4);
-		else
-			redirectTarget = "/";
-	}
-	if (statusCode == 301)
-		response = HttpResponse::movedPermanently(redirectTarget);
 	else
-		response = HttpResponse::found(redirectTarget);
+		statusCode = 301;
+	if (statusCode == 302)
+		response = HttpResponse::found(redirectPath);
+	else
+		response = HttpResponse::movedPermanently(redirectPath);
 }
 
 /**
@@ -823,17 +838,17 @@ std::string	WebServer::escapeHtml(const std::string & str)
 	return (result);
 }
 
-bool	WebServer::validateBodySize(const Client & client, HttpResponse & response)
+bool	WebServer::validateBodySize(const Client & client, const ServerConfig & config, HttpResponse & response)
 {
-	bool	result;
+	size_t	contentLength;
 
-	result = true;
-	if (client.isBodySizeExceeded())
+	contentLength = client.getContentLength();
+	if (contentLength > config.getClientMaxBodySize())
 	{
-		response = HttpResponse::payloadTooLarge();
-		result = false;
+		response = HttpResponse::payloadTooLarge(&config);
+		return (false);
 	}
-	return (result);
+	return (true);
 }
 
 std::string	WebServer::getUploadPath(const RequestContext & context)
@@ -902,7 +917,7 @@ void	WebServer::handlePostRequest(int fd, RequestContext & context, Client & cli
 	HttpResponse	response;
 	std::string		uploadPath;
 
-	if (!validateBodySize(client, response))
+	if (!validateBodySize(client, *(context.getTargetServer()), response))
 	{
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
@@ -910,7 +925,7 @@ void	WebServer::handlePostRequest(int fd, RequestContext & context, Client & cli
 	}
 	if (context.getMatchedLocation() == NULL || context.getMatchedLocation()->getUploadStore().empty())
 	{
-		response = HttpResponse::notImplemented();
+		response = HttpResponse::notImplemented(context.getTargetServer());
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
 		return;
@@ -919,7 +934,7 @@ void	WebServer::handlePostRequest(int fd, RequestContext & context, Client & cli
 	file.open(uploadPath.c_str(), std::ios::out | std::ios::binary);
 	if (!file.is_open())
 	{
-		response = HttpResponse::internalServerError();
+		response = HttpResponse::internalServerError(context.getTargetServer());
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
 		return;
@@ -944,21 +959,21 @@ void	WebServer::handleDeleteRequest(int fd, RequestContext & context)
 		targetPath = context.getResolvedPath();
 	if (stat(targetPath.c_str(), &statbuf) != 0)
 	{
-		response = HttpResponse::notFound();
+		response = HttpResponse::notFound(context.getTargetServer());
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
 		return;
 	}
 	if (access(targetPath.c_str(), W_OK) != 0)
 	{
-		response = HttpResponse::forbidden();
+		response = HttpResponse::forbidden(context.getTargetServer());
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
 		return;
 	}
 	if (unlink(targetPath.c_str()) != 0)
 	{
-		response = HttpResponse::internalServerError();
+		response = HttpResponse::internalServerError(context.getTargetServer());
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
 		return;

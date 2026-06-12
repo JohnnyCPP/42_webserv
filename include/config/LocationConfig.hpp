@@ -9,6 +9,7 @@ private:
 
 	std::string					path;
 	std::vector<std::string>	allowedMethods;
+	std::string					redirectCode;
 	std::string					redirect;
 	std::string					root;
 	bool						autoindex;
@@ -25,6 +26,7 @@ public:
 
 	void								setPath(const std::string & newPath);
 	void								addAllowedMethod(const std::string & method);
+	void								setRedirectCode(const std::string & newCode);
 	void								setRedirect(const std::string & newRedirect);
 	void								setRoot(const std::string & newRoot);
 	void								setAutoindex(bool newAutoindex);
@@ -34,6 +36,7 @@ public:
 
 	const std::string &					getPath() const;
 	const std::vector<std::string> &	getAllowedMethods() const;
+	const std::string &					getRedirectCode() const;
 	const std::string &					getRedirect() const;
 	const std::string &					getRoot() const;
 	bool								getAutoindex() const;

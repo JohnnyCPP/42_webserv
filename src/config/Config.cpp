@@ -155,14 +155,14 @@ void	Config::parseServers(const std::vector<std::string> & lines)
 	i = 0;
 	while (i < lines.size())
 	{
-		if (lines[i].find("server") == 0)
+		if (lines[i].find(WebServ::BLOCK_SERVER) == 0)
 		{
-			if (lines[i].find("{") != std::string::npos)
+			if (lines[i].find(WebServ::BLOCK_OPEN) != std::string::npos)
 			{
 				++i;
 				servers.push_back(parseServerBlock(lines, i));
 			}
-			else if (i + 1 < lines.size() && lines[i + 1] == "{")
+			else if (i + 1 < lines.size() && lines[i + 1] == WebServ::BLOCK_OPEN)
 			{
 				i += 2;
 				servers.push_back(parseServerBlock(lines, i));
@@ -184,7 +184,7 @@ ServerConfig	Config::parseServerBlock(const std::vector<std::string> & lines, si
 	braceCount = 1;
 	while (index < lines.size() && braceCount > 0)
 	{
-		if (lines[index] == "}")
+		if (lines[index] == WebServ::BLOCK_CLOSE)
 		{
 			--braceCount;
 			if (braceCount == 0)
@@ -192,15 +192,15 @@ ServerConfig	Config::parseServerBlock(const std::vector<std::string> & lines, si
 			++index;
 			continue;
 		}
-		if (lines[index].find("location") == 0)
+		if (lines[index].find(WebServ::BLOCK_LOCATION) == 0)
 		{
-			if (lines[index].find("{") != std::string::npos)
+			if (lines[index].find(WebServ::BLOCK_OPEN) != std::string::npos)
 			{
 				location = lines[index];
 				++index;
 				server.addLocation(parseLocationBlock(lines, index, location));
 			}
-			else if (index + 1 < lines.size() && lines[index + 1] == "{")
+			else if (index + 1 < lines.size() && lines[index + 1] == WebServ::BLOCK_OPEN)
 			{
 				location = lines[index];
 				index += 2;
@@ -224,12 +224,12 @@ LocationConfig	Config::parseLocationBlock(const std::vector<std::string> & lines
 	size_t			bracePos;
 	std::string		locationPath;
 
-	if (location.find("{") != std::string::npos)
+	if (location.find(WebServ::BLOCK_OPEN) != std::string::npos)
 	{
-		bracePos = location.find("{");
+		bracePos = location.find(WebServ::BLOCK_OPEN);
 		locationPath = location.substr(0, bracePos);
 		trim(locationPath);
-		if (locationPath.find("location") == 0)
+		if (locationPath.find(WebServ::BLOCK_LOCATION) == 0)
 		{
 			locationPath = locationPath.substr(8);
 			trim(locationPath);
@@ -239,7 +239,7 @@ LocationConfig	Config::parseLocationBlock(const std::vector<std::string> & lines
 	{
 		locationPath = location;
 		trim(locationPath);
-		if (locationPath.find("location") == 0)
+		if (locationPath.find(WebServ::BLOCK_LOCATION) == 0)
 		{
 			locationPath = locationPath.substr(8);
 			trim(locationPath);
@@ -249,7 +249,7 @@ LocationConfig	Config::parseLocationBlock(const std::vector<std::string> & lines
 	braceCount = 1;
 	while (index < lines.size() && braceCount > 0)
 	{
-		if (lines[index] == "}")
+		if (lines[index] == WebServ::BLOCK_CLOSE)
 		{
 			--braceCount;
 			if (braceCount == 0)
@@ -277,7 +277,7 @@ void	Config::parseDirective(ServerConfig & server, const std::string & line)
 	tokens = tokenizeLine(line);
 	if (tokens.empty())
 		return;
-	if (tokens[0] == "listen" && tokens.size() >= 2)
+	if (tokens[0] == WebServ::D_LISTEN && tokens.size() >= 2)
 	{
 		i = 1;
 		while (i < tokens.size())
@@ -286,11 +286,11 @@ void	Config::parseDirective(ServerConfig & server, const std::string & line)
 			++i;
 		}
 	}
-	else if (tokens[0] == "server_name" && tokens.size() >= 2)
+	else if (tokens[0] == WebServ::D_SERVER && tokens.size() >= 2)
 	{
 		server.setServerName(tokens[1]);
 	}
-	else if (tokens[0] == "client_max_body_size" && tokens.size() >= 2)
+	else if (tokens[0] == WebServ::D_BODY_SIZE && tokens.size() >= 2)
 	{
 		sizeStr = tokens[1];
 		multiplier = 1;
@@ -311,7 +311,7 @@ void	Config::parseDirective(ServerConfig & server, const std::string & line)
 		iss >> sizeValue;
 		server.setClientMaxBodySize(sizeValue * multiplier);
 	}
-	else if (tokens[0] == "error_page" && tokens.size() >= 3)
+	else if (tokens[0] == WebServ::D_ERROR_PAGE && tokens.size() >= 3)
 	{
 		j = 1;
 		while (j < tokens.size() - 1)
@@ -322,11 +322,11 @@ void	Config::parseDirective(ServerConfig & server, const std::string & line)
 			++j;
 		}
 	}
-	else if (tokens[0] == "root" && tokens.size() >= 2)
+	else if (tokens[0] == WebServ::D_ROOT && tokens.size() >= 2)
 	{
 		server.setRoot(tokens[1]);
 	}
-	else if (tokens[0] == "index" && tokens.size() >= 2)
+	else if (tokens[0] == WebServ::D_INDEX && tokens.size() >= 2)
 	{
 		server.setIndex(tokens[1]);
 	}
@@ -340,8 +340,7 @@ void	Config::parseLocationDirective(LocationConfig & location, const std::string
 	tokens = tokenizeLine(line);
 	if (tokens.empty())
 		return;
-
-	if (tokens[0] == "allow_methods")
+	if (tokens[0] == WebServ::D_METHODS)
 	{
 		i = 1;
 		while (i < tokens.size())
@@ -350,30 +349,31 @@ void	Config::parseLocationDirective(LocationConfig & location, const std::string
 			++i;
 		}
 	}
-	else if (tokens[0] == "return" && tokens.size() >= 3)
+	else if (tokens[0] == WebServ::D_REDIRECT && tokens.size() >= 3)
 	{
+		location.setRedirectCode(tokens[1]);
 		location.setRedirect(tokens[2]);
 	}
-	else if (tokens[0] == "root" && tokens.size() >= 2)
+	else if (tokens[0] == WebServ::D_ROOT && tokens.size() >= 2)
 	{
 		location.setRoot(tokens[1]);
 	}
-	else if (tokens[0] == "autoindex" && tokens.size() >= 2)
+	else if (tokens[0] == WebServ::D_AUTOINDEX && tokens.size() >= 2)
 	{
-		if (tokens[1] == "on")
+		if (tokens[1] == WebServ::AUTOINDEX_ON)
 			location.setAutoindex(true);
-		else if (tokens[1] == "off")
+		else if (tokens[1] == WebServ::AUTOINDEX_OFF)
 			location.setAutoindex(false);
 	}
-	else if (tokens[0] == "index" && tokens.size() >= 2)
+	else if (tokens[0] == WebServ::D_INDEX && tokens.size() >= 2)
 	{
 		location.setIndex(tokens[1]);
 	}
-	else if (tokens[0] == "upload_store" && tokens.size() >= 2)
+	else if (tokens[0] == WebServ::D_STORE && tokens.size() >= 2)
 	{
 		location.setUploadStore(tokens[1]);
 	}
-	else if (tokens[0] == "cgi_extension")
+	else if (tokens[0] == WebServ::D_CGI)
 	{
 		i = 1;
 		while (i < tokens.size())

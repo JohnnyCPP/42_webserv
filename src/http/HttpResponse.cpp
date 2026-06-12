@@ -1,4 +1,5 @@
 #include "http/HttpResponse.hpp"
+#include "log/log.hpp"
 
 HttpResponse::HttpResponse()
 	: headers(),
@@ -161,6 +162,81 @@ std::string	HttpResponse::getHeadersString() const
 	return (result);
 }
 
+std::string	HttpResponse::loadErrorPage(int code, const ServerConfig * config) const
+{
+	std::map<int, std::string>::const_iterator	it;
+	std::stringstream							buffer;
+	std::ifstream								file;
+	std::string									configuredPath;
+	std::string									fullPath;
+	std::string									line;
+	bool										isAbsolute;
+
+	if (config == NULL)
+	{
+		logError("configuration is missing");
+		return (getDefaultBody(code));
+	}
+	buffer << "webserv is loading a custom error page with code " << code;
+	log(buffer.str());
+	it = config->getErrorPages().find(code);
+	if (it == config->getErrorPages().end())
+	{
+		logError("custom error page not found");
+		return (getDefaultBody(code));
+	}
+	configuredPath = it->second;
+	if (configuredPath.empty())
+	{
+		logError("custom error page is found, but its path is empty");
+		return (getDefaultBody(code));
+	}
+	log(std::string("configured path is ") + configuredPath);
+	log(std::string("configured root is ") + config->getRoot());
+	isAbsolute = configuredPath[0] == '/';
+	if (isAbsolute)
+	{
+		log("configured path is absolute");
+		fullPath = config->getRoot();
+		if (fullPath.empty())
+			fullPath = ".";
+		if (fullPath[fullPath.length() - 1] == '/')
+			fullPath = fullPath.substr(0, fullPath.length() - 1);
+		fullPath += configuredPath;
+	}
+	else
+	{
+		log("configured path is relative");
+		fullPath = config->getRoot();
+		if (fullPath.empty())
+			fullPath = ".";
+		fullPath += "/";
+		fullPath += configuredPath;
+	}
+	log(std::string("loading custom error page from ") + fullPath);
+	buffer.str("");
+	buffer.clear();
+	file.open(fullPath.c_str());
+	if (file.is_open())
+	{
+		while (std::getline(file, line))
+			buffer << line << "\n";
+		file.close();
+		if (!buffer.str().empty())
+			return (buffer.str());
+		else
+			logError("custom error page is empty");
+	}
+	return (getDefaultBody(code));
+}
+
+bool	HttpResponse::fileExists(const std::string & path) const
+{
+	struct stat	statbuf;
+
+	return (stat(path.c_str(), &statbuf) == 0 && S_ISREG(statbuf.st_mode));
+}
+
 const std::map<std::string, std::string> &	HttpResponse::getHeaders() const
 {
 	return (headers);
@@ -189,8 +265,11 @@ std::string	HttpResponse::getDefaultMessage(int code) const
 
 std::string	HttpResponse::getDefaultBody(int code) const
 {
-	std::string	body;
+	std::stringstream	buffer;
+	std::string			body;
 
+	buffer << "webserv is loading a default error page with code " << code;
+	log(buffer.str());
 	body = "<html><head><title>";
 	body += getDefaultMessage(code);
 	body += "</title></head><body>";
@@ -307,83 +386,83 @@ HttpResponse	HttpResponse::found(const std::string & location)
 	return (response);
 }
 
-HttpResponse	HttpResponse::badRequest()
+HttpResponse	HttpResponse::badRequest(const ServerConfig * config)
 {
 	HttpResponse	response;
 
 	response.setStatus(400);
 	response.setContentType(".html");
-	response.setBody(response.getDefaultBody(400));
+	response.setBody(response.loadErrorPage(400, config));
 	return (response);
 }
 
-HttpResponse	HttpResponse::forbidden()
+HttpResponse	HttpResponse::forbidden(const ServerConfig * config)
 {
 	HttpResponse	response;
 
 	response.setStatus(403);
 	response.setContentType(".html");
-	response.setBody(response.getDefaultBody(403));
+	response.setBody(response.loadErrorPage(403, config));
 	return (response);
 }
 
-HttpResponse	HttpResponse::notFound()
+HttpResponse	HttpResponse::notFound(const ServerConfig * config)
 {
 	HttpResponse	response;
 
 	response.setStatus(404);
 	response.setContentType(".html");
-	response.setBody(response.getDefaultBody(404));
+	response.setBody(response.loadErrorPage(404, config));
 	return (response);
 }
 
-HttpResponse	HttpResponse::methodNotAllowed(const std::string & allowedMethods)
+HttpResponse	HttpResponse::methodNotAllowed(const std::string & allowedMethods, const ServerConfig * config)
 {
 	HttpResponse	response;
 
 	response.setStatus(405);
 	response.setHeader("Allow", allowedMethods);
 	response.setContentType(".html");
-	response.setBody(response.getDefaultBody(405));
+	response.setBody(response.loadErrorPage(405, config));
 	return (response);
 }
 
-HttpResponse	HttpResponse::payloadTooLarge()
+HttpResponse	HttpResponse::payloadTooLarge(const ServerConfig * config)
 {
 	HttpResponse	response;
 
 	response.setStatus(413);
 	response.setContentType(".html");
-	response.setBody(response.getDefaultBody(413));
+	response.setBody(response.loadErrorPage(413, config));
 	return (response);
 }
 
-HttpResponse	HttpResponse::internalServerError()
+HttpResponse	HttpResponse::internalServerError(const ServerConfig * config)
 {
 	HttpResponse	response;
 
 	response.setStatus(500);
 	response.setContentType(".html");
-	response.setBody(response.getDefaultBody(500));
+	response.setBody(response.loadErrorPage(500, config));
 	return (response);
 }
 
-HttpResponse	HttpResponse::notImplemented()
+HttpResponse	HttpResponse::notImplemented(const ServerConfig * config)
 {
 	HttpResponse	response;
 
 	response.setStatus(501);
 	response.setContentType(".html");
-	response.setBody(response.getDefaultBody(501));
+	response.setBody(response.loadErrorPage(501, config));
 	return (response);
 }
 
-HttpResponse	HttpResponse::versionNotSupported()
+HttpResponse	HttpResponse::versionNotSupported(const ServerConfig * config)
 {
 	HttpResponse	response;
 
 	response.setStatus(505);
 	response.setContentType(".html");
-	response.setBody(response.getDefaultBody(505));
+	response.setBody(response.loadErrorPage(505, config));
 	return (response);
 }

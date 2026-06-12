@@ -47,7 +47,7 @@ private:
 	std::string	formatFileSize(off_t size);
 	std::string	escapeHtml(const std::string & str);
 
-	bool		validateBodySize(const Client & client, HttpResponse & response);
+	bool		validateBodySize(const Client & client, const ServerConfig & config, HttpResponse & response);
 	std::string	getUploadPath(const RequestContext & context);
 	std::string	generateAllowedMethodsHeader(const RequestContext & context);
 	void		handlePostRequest(int fd, RequestContext & context, Client & client);

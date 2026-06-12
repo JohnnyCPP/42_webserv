@@ -288,11 +288,19 @@ void	Client::parseHeaderLine(const std::string & line)
 
 	colonPos = line.find(':');
 	if (colonPos == std::string::npos)
+	{
+		error = true;
 		return;
+	}
 	key = line.substr(0, colonPos);
 	value = line.substr(colonPos + 1);
 	while (!value.empty() && (value[0] == ' ' || value[0] == '\t'))
 		value.erase(0, 1);
+	if (key.empty())
+	{
+		error = true;
+		return;
+	}
 	headers[key] = value;
 }
 
@@ -379,7 +387,7 @@ bool	Client::isValidMethod(const std::string & method) const
  */
 bool	Client::isValidVersion(const std::string & version) const
 {
-	return (version == "HTTP/1.0" || version == "HTTP/1.1");
+	return (version == WebServ::HTTP_VERSION);
 }
 
 void	Client::resetParseState()
