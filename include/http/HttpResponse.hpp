@@ -16,10 +16,10 @@ private:
 	int									statusCode;
 
 	std::string	getDefaultMessage(int code) const;
-	std::string getDefaultBody(int code) const;
-	std::string getContentType(const std::string & path) const;
-	std::string getStatusLine() const;
-	std::string getHeadersString() const;
+	std::string	getDefaultBody(int code) const;
+	std::string	getContentType(const std::string & path) const;
+	std::string	getStatusLine() const;
+	std::string	getHeadersString() const;
 
 public:
 
@@ -37,6 +37,8 @@ public:
 	std::string			toString() const;
 	int					getStatusCode() const;
 	void				clear();
+
+	const std::map<std::string, std::string> &	getHeaders() const;
 
 	static HttpResponse	ok(const std::string & body);
 	static HttpResponse created(const std::string & location);

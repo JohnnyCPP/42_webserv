@@ -28,7 +28,8 @@ CONF_SRC_FILES	:=	LocationConfig.cpp \
 SERV_SRC_FILES	:=	Server.cpp \
 					WebServer.cpp
 CLNT_SRC_FILES	:=	Client.cpp
-HTTP_SRC_FILES	:=	HttpResponse.cpp
+HTTP_SRC_FILES	:=	HttpResponse.cpp \
+					RequestContext.cpp
 LOG_SRC_FILES	:=	log.cpp
 
 ROOT_SRCS		:= $(addprefix ${SRC_DIR}, ${ROOT_SRC_FILES})

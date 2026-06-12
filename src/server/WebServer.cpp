@@ -1,5 +1,6 @@
 #include "server/WebServer.hpp"
 #include "log/log.hpp"
+#include "constants.hpp"
 
 WebServer::WebServer()
 	: servers(),
@@ -66,7 +67,7 @@ WebServer &	WebServer::operator=(const WebServer & that)
 	return (*this);
 }
 
-void WebServer::addToPoll(int fd, short events)
+void	WebServer::addToPoll(int fd, short events)
 {
 	struct pollfd	pollfd;
 
@@ -76,7 +77,7 @@ void WebServer::addToPoll(int fd, short events)
 	pollFds.push_back(pollfd);
 }
 
-void WebServer::removeFromPoll(int fd)
+void	WebServer::removeFromPoll(int fd)
 {
 	size_t	i;
 
@@ -92,7 +93,7 @@ void WebServer::removeFromPoll(int fd)
 	}
 }
 
-void WebServer::getListeningSockets()
+void	WebServer::getListeningSockets()
 {
 	std::ostringstream	stream;
 	std::vector<int>	listenFds;
@@ -114,7 +115,7 @@ void WebServer::getListeningSockets()
 /**
  * There is data to read.
  */
-void WebServer::handlePollIn(struct pollfd current)
+void	WebServer::handlePollIn(struct pollfd current)
 {
 	std::ostringstream	stream;
 	size_t				i;
@@ -150,7 +151,7 @@ void WebServer::handlePollIn(struct pollfd current)
  * available space in a socket or pipe will still block
  * unless O_NONBLOCK is set.
  */
-void WebServer::handlePollOut(struct pollfd current)
+void	WebServer::handlePollOut(struct pollfd current)
 {
 	std::map<int, std::string>::iterator	it;
 	std::map<int, Client>::iterator			clientIt;
@@ -170,15 +171,7 @@ void WebServer::handlePollOut(struct pollfd current)
 	remaining = it->second.size();
 	bytesSent = send(current.fd, data, remaining, 0);
 	if (bytesSent == -1)
-	{
-		if (errno != EAGAIN && errno != EWOULDBLOCK)
-		{
-			logError(std::string("send() failed: ") + strerror(errno));
-			removeClient(current.fd);
-			pendingResponses.erase(it);
-		}
 		return;
-	}
 	stream.str("");
 	stream.clear();
 	stream << "webserv sent " << bytesSent << " bytes";
@@ -217,7 +210,7 @@ void WebServer::handlePollOut(struct pollfd current)
  *
  * POLLNVAL: Invalid request.
  */
-void WebServer::handlePollErr(struct pollfd current)
+void	WebServer::handlePollErr(struct pollfd current)
 {
 	std::ostringstream	stream;
 
@@ -227,9 +220,30 @@ void WebServer::handlePollErr(struct pollfd current)
 	removeFromPoll(current.fd);
 }
 
-void WebServer::handleClientRead(int fd)
+/**
+ * Explicitly avoiding determining the server behavior with errno.
+ *
+ * The purpose of that is to enforce proper non-blocking I/O design 
+ * and separation of concerns.
+ *
+ * Checking errno, after recv() returns -1, makes its behavior 
+ * dependent on OS-specific error codes.
+ *
+ * Different UNIX-like systems may return different error codes 
+ * for the same situation.
+ *
+ * "Checking the value of errno to adjust the server behaviour 
+ * is strictly forbidden after performing a read or write operation."
+ *
+ * If poll() returned POLLIN, recv() should not return -1 unless:
+ *
+ * - Connection was reset
+ * - Or webserv read all data
+ */
+void	WebServer::handleClientRead(int fd)
 {
 	std::map<int, Client>::iterator	it;
+	std::ostringstream				stream;
 	char							buffer[WebServ::RECV_BUFFER_SIZE];
 	ssize_t							bytesRead;
 	bool							keepReading;
@@ -237,12 +251,18 @@ void WebServer::handleClientRead(int fd)
 	it = clients.find(fd);
 	if (it == clients.end())
 		return;
+	stream << "webserv is reading a client request on socket " << fd;
+	log(stream.str());
 	keepReading = true;
 	while (keepReading)
 	{
 		bytesRead = recv(fd, buffer, sizeof(buffer), 0);
 		if (bytesRead > 0)
 		{
+			stream.str("");
+			stream.clear();
+			stream << "webserv read " << bytesRead << " bytes from client socket " << fd;
+			log(stream.str());
 			it->second.appendToBuffer(std::string(buffer, bytesRead));
 			it->second.parseRequest();
 			if (it->second.isRequestComplete() || it->second.hasError())
@@ -254,66 +274,65 @@ void WebServer::handleClientRead(int fd)
 			return;
 		}
 		else
-		{
-			if (errno == EAGAIN || errno == EWOULDBLOCK)
-				keepReading = false;
-			else
-				removeClient(fd);
-			return;
-		}
+			keepReading = false;
 	}
 	if (it->second.isRequestComplete())
 		processClientRequest(fd);
 	else if (it->second.hasError())
+	{
+		stream.str("");
+		stream.clear();
+		stream << "webserv detected an error with client socket " << fd;
+		logError(stream.str());
 		removeClient(fd);
+	}
 }
 
 /**
- * Client Request (GET /index.html)
- *          │
- *          ▼
- * ┌─────────────────────────────────────────────────────────────────┐
- * │ 1. Find Client object by FD                                     │
- * │ 2. Find which Server owns this client                           │
- * │ 3. Check for parsing errors (400 Bad Request)                   │
- * │ 4. Convert request path to filesystem path                      │
- * │ 5. Check if file exists using stat()                            │
- * │ 6. If directory → append index.html and check again             │
- * │ 7. If not a regular file → 403 Forbidden                        │
- * │      Ensures the path is a regular file,                        │
- * │      not a special file (device, pipe, socket, symlink)         │
- * │ 8. Read file and send as response                               │
- * └─────────────────────────────────────────────────────────────────┘
+ * This function determines the appropiate response for a client socket 
+ * after its HTTP request has been fully received.
  */
-void WebServer::processClientRequest(int fd)
+void	WebServer::processClientRequest(int fd)
 {
-	std::map<int, Client>::iterator		clientIt;
-	std::map<int, Server*>::iterator	serverIt;
-	HttpResponse						response;
-	std::string							fullPath;
-	struct stat							statbuf;
+	std::map<int, Client>::iterator	clientIt;
+	std::ostringstream				stream;
+	RequestContext					context;
+	HttpResponse					response;
+	std::string						indexPath;
+	std::string						autoindexHTML;
+	std::string						requestURI;
+	struct stat						statbuf;
+	Client *						client;
+	bool							autoindex;
+	bool							hasIndexFile;
 
 	clientIt = clients.find(fd);
 	if (clientIt == clients.end())
 		return;
-	serverIt = clientToServer.find(fd);
-	if (serverIt == clientToServer.end())
+	buildRequestContext(fd, context);
+	client = &clientIt->second;
+	stream << client->getMethod() << " " << client->getPath() << " " << client->getVersion();
+	log(stream.str());
+	if (!isMethodAllowed(context, clientIt->second.getMethod()))
 	{
-		response = HttpResponse::internalServerError();
+		logError("method not allowed");
+		response = HttpResponse::methodNotAllowed("");
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
 		return;
 	}
-	if (clientIt->second.hasError())
+	handleRedirect(context, response);
+	if (context.hasRedirect())
 	{
-		response = HttpResponse::badRequest();
+		log(std::string("redirecting to ") + response.getHeaders().find("Location")->second);
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
 		return;
 	}
-	fullPath = buildFilePath(clientIt->second, serverIt->second->getConfig());
-	if (stat(fullPath.c_str(), &statbuf) != 0)
+	resolveFilesystemPath(context);
+	if (stat(context.getResolvedPath().c_str(), &statbuf) != 0)
 	{
+		log(std::string("resource ") + context.getResolvedPath() + std::string(" was not found"));
 		response = HttpResponse::notFound();
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
@@ -321,9 +340,42 @@ void WebServer::processClientRequest(int fd)
 	}
 	if (S_ISDIR(statbuf.st_mode))
 	{
-		fullPath = handleDirectoryPath(fullPath, serverIt->second->getConfig());
-		if (stat(fullPath.c_str(), &statbuf) != 0)
+		log(std::string("resource ") + context.getResolvedPath() + std::string(" is a directory"));
+		autoindex = false;
+		if (context.getMatchedLocation() != NULL)
+			autoindex = context.getMatchedLocation()->getAutoindex();
+		if (autoindex)
 		{
+			log("autoindex is enabled");
+			indexPath = context.getResolvedPath();
+			if (indexPath[indexPath.length() - 1] != '/')
+				indexPath += '/';
+			if (context.getMatchedLocation() != NULL && !context.getMatchedLocation()->getIndex().empty())
+				indexPath += context.getMatchedLocation()->getIndex();
+			else
+				indexPath += context.getTargetServer()->getIndex();
+			hasIndexFile = (stat(indexPath.c_str(), &statbuf) == 0 && S_ISREG(statbuf.st_mode));
+			if (!hasIndexFile)
+			{
+				requestURI = context.getRequestPath();
+				if (requestURI.empty() || requestURI[requestURI.length() - 1] != '/')
+					requestURI += '/';
+				autoindexHTML = generateAutoindex(context.getResolvedPath(), requestURI);
+				response.setStatus(200);
+				response.setHeader("Content-Type", "text/html");
+				response.setBody(autoindexHTML);
+				pendingResponses[fd] = response.toString();
+				modifyPollEvents(fd, POLLOUT);
+				log(std::string("generated autoindex for ") + context.getResolvedPath());
+				return;
+			}
+		}
+		else
+			log("autoindex is disabled");
+		context.setResolvedPath(handleDirectoryPath(context));
+		if (stat(context.getResolvedPath().c_str(), &statbuf) != 0)
+		{
+			logError(std::string("resource ") + context.getResolvedPath() + std::string(" was not found"));
 			response = HttpResponse::notFound();
 			pendingResponses[fd] = response.toString();
 			modifyPollEvents(fd, POLLOUT);
@@ -332,18 +384,19 @@ void WebServer::processClientRequest(int fd)
 	}
 	if (!S_ISREG(statbuf.st_mode))
 	{
+		log(std::string("resource ") + context.getResolvedPath() + std::string(" is not a regular file. It may be a device, socket, symlink, or other"));
 		response = HttpResponse::forbidden();
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
 		return;
 	}
-	response.setBodyFromFile(fullPath);
+	response.setBodyFromFile(context.getResolvedPath());
 	pendingResponses[fd] = response.toString();
 	modifyPollEvents(fd, POLLOUT);
-	log(std::string("webserv is serving a file located at ") + fullPath);
+	log(std::string("webserv will serve a file located at ") + context.getResolvedPath());
 }
 
-void WebServer::removeClient(int fd)
+void	WebServer::removeClient(int fd)
 {
 	std::map<int, std::string>::iterator	pendingIt;
 	std::map<int, Client>::iterator			clientIt;
@@ -365,7 +418,7 @@ void WebServer::removeClient(int fd)
 	log(stream.str());
 }
 
-void WebServer::cleanupRemovedClients()
+void	WebServer::cleanupRemovedClients()
 {
 	std::ostringstream	stream;
 	size_t				clientsCount;
@@ -397,7 +450,7 @@ void WebServer::cleanupRemovedClients()
 	clientsToRemove.clear();
 }
 
-void WebServer::modifyPollEvents(int fd, short events)
+void	WebServer::modifyPollEvents(int fd, short events)
 {
 	size_t	i;
 
@@ -413,30 +466,179 @@ void WebServer::modifyPollEvents(int fd, short events)
 	}
 }
 
-std::string WebServer::buildFilePath(const Client & client, const ServerConfig & serverConfig)
+/**
+ * Gathers initial information about the request and stores it in context.
+ */
+void	WebServer::buildRequestContext(int clientFd, RequestContext & context)
 {
-	std::string	requestPath;
-	std::string	root;
-	std::string	fullPath;
-	size_t		queryPos;
+	std::map<int, Server*>::iterator	serverIt;
+	std::map<int, Client>::iterator		clientIt;
+	const LocationConfig *				matchedLocation;
+	std::string							requestPath;
+	size_t								queryPos;
 
-	requestPath = client.getPath();
-	root = serverConfig.getRoot();
+	clientIt = clients.find(clientFd);
+	if (clientIt == clients.end())
+		return;
+	serverIt = clientToServer.find(clientFd);
+	if (serverIt == clientToServer.end())
+		return;
+	requestPath = clientIt->second.getPath();
 	queryPos = requestPath.find('?');
 	if (queryPos != std::string::npos)
 		requestPath = requestPath.substr(0, queryPos);
-	if (requestPath.length() > 1 && requestPath[requestPath.length() - 1] == '/')
-		requestPath = requestPath.substr(0, requestPath.length() - 1);
-	fullPath = root;
-	if (fullPath[fullPath.length() - 1] != '/')
-		fullPath += '/';
-	if (!requestPath.empty() && requestPath[0] == '/')
-		requestPath = requestPath.substr(1);
-	fullPath += requestPath;
-	return (fullPath);
+	context.setRequestPath(requestPath);
+	context.setTargetServer(&(serverIt->second->getConfig()));
+	matchedLocation = context.getTargetServer()->matchLocation(requestPath);
+	context.setMatchedLocation(matchedLocation);
 }
 
-bool WebServer::isDirectory(const std::string & path)
+/**
+ * Converts the URL path to a filesystem path.
+ *
+ * Example:
+ *
+ * If server has a location path "/public" whose root is "./www/public" 
+ * and the request is "/public/subdir/file.txt", then:
+ *
+ * 1: locationPath = "/public"
+ * 2: remainingPath = requestPath without locationPath = "/subdir/file.txt"
+ * 3: root = "./www/public"
+ * 4: resolved = root + remainingPath = "./www/public/subdir/file.txt"
+ */
+void	WebServer::resolveFilesystemPath(RequestContext & context)
+{
+	std::string	remainingPath;
+	std::string	locationPath;
+	std::string	requestPath;
+	std::string	resolved;
+	std::string	root;
+
+	requestPath = context.getRequestPath();
+	root = context.getTargetServer()->getRoot();
+	if (context.hasCustomRoot())
+		root = context.getMatchedLocation()->getRoot();
+	if (context.getMatchedLocation() != NULL)
+	{
+		locationPath = context.getMatchedLocation()->getPath();
+		if (requestPath.find(locationPath) == 0)
+		{
+			remainingPath = requestPath.substr(locationPath.length());
+			if (remainingPath.empty() || remainingPath[0] != '/')
+				remainingPath = "/" + remainingPath;
+		}
+		else
+			remainingPath = requestPath;
+	}
+	else
+		remainingPath = requestPath;
+	if (root[root.length() - 1] == '/')
+		resolved = root;
+	else
+		resolved = root + "/";
+	if (!remainingPath.empty() && remainingPath[0] == '/')
+		remainingPath = remainingPath.substr(1);
+	resolved += remainingPath;
+	context.setResolvedPath(resolved);
+}
+
+/**
+ * If the location has a return directive, creates a redirect response.
+ *
+ * Example:
+ *
+ * For a given location block:
+ *
+ * location /old-stuff {
+ *     return 301 /public;
+ * }
+ *
+ * 1. Detects hasRedirect() = true
+ * 2. Reads redirect target = /public
+ * 3. Detects 301 in the string
+ * 4. Creates HTTP response: 301 Moved Permanently with Location: /public
+ */
+void	WebServer::handleRedirect(const RequestContext & context, HttpResponse & response)
+{
+	std::string	redirectTarget;
+	int			statusCode;
+
+	if (!context.hasRedirect())
+		return;
+	redirectTarget = context.getMatchedLocation()->getRedirect();
+	statusCode = 301;
+	if (redirectTarget.find("302") == 0)
+	{
+		statusCode = 302;
+		if (redirectTarget.length() > 4)
+			redirectTarget = redirectTarget.substr(4);
+		else
+			redirectTarget = "/";
+	}
+	else if (redirectTarget.find("301") == 0)
+	{
+		statusCode = 301;
+		if (redirectTarget.length() > 4)
+			redirectTarget = redirectTarget.substr(4);
+		else
+			redirectTarget = "/";
+	}
+	if (statusCode == 301)
+		response = HttpResponse::movedPermanently(redirectTarget);
+	else
+		response = HttpResponse::found(redirectTarget);
+}
+
+/**
+ * Checks if the HTTP method is allowed for this location.
+ *
+ * If the context lacks a matched location, all methods are allowed.
+ *
+ * This is intentional, because to forbid methods, the configuration 
+ * file allows the administrator to explicitly forbid all methods 
+ * for a location if "allow_methods" directive is missing.
+ *
+ * Example:
+ *
+ * Given the following location blocks:
+ *
+ * location /public {
+ *     allow_methods GET;
+ * }
+ * 
+ * location /api {
+ *     allow_methods GET POST DELETE;
+ * }
+ * 
+ * location / {
+ * }
+ *
+ * A request whose method is POST is allowed for path "/api" 
+ * but not allowed for path "/public".
+ *
+ * All methods are forbidden for path "/".
+ */
+bool	WebServer::isMethodAllowed(const RequestContext & context, const std::string & method)
+{
+	const std::vector<std::string> *	allowedMethods;
+	size_t								i;
+
+	if (context.getMatchedLocation() == NULL)
+		return (true);
+	allowedMethods = &(context.getMatchedLocation()->getAllowedMethods());
+	if (allowedMethods->empty())
+		return (false);
+	i = 0;
+	while (i < allowedMethods->size())
+	{
+		if ((*allowedMethods)[i] == method)
+			return (true);
+		++i;
+	}
+	return (false);
+}
+
+bool	WebServer::isDirectory(const std::string & path)
 {
 	struct stat	statbuf;
 	int			result;
@@ -447,15 +649,158 @@ bool WebServer::isDirectory(const std::string & path)
 	return (S_ISDIR(statbuf.st_mode));
 }
 
-std::string WebServer::handleDirectoryPath(const std::string & dirPath, const ServerConfig & serverConfig)
+/**
+ * When the resolved path is a directory, determines what file to serve.
+ *
+ * Priority chain:
+ *
+ * 1. Location's index directive (if specified)
+ * 2. Server's index directive (if specified)
+ * 3. Default "index.html"
+ */
+std::string	WebServer::handleDirectoryPath(RequestContext & context)
 {
+	std::string	resolvedPath;
+	std::string	indexFile;
 	std::string	indexPath;
 
-	indexPath = dirPath;
-	if (indexPath[indexPath.length() - 1] != '/')
-		indexPath += '/';
-	indexPath += serverConfig.getIndex();
+	resolvedPath = context.getResolvedPath();
+	if (resolvedPath[resolvedPath.length() - 1] != '/')
+		resolvedPath += '/';
+	if (context.getMatchedLocation() != NULL && !context.getMatchedLocation()->getIndex().empty())
+		indexFile = context.getMatchedLocation()->getIndex();
+	else
+		indexFile = context.getTargetServer()->getIndex();
+	if (indexFile.empty())
+		indexFile = WebServ::DEFAULT_INDEX;
+	indexPath = resolvedPath + indexFile;
 	return (indexPath);
+}
+
+std::string	WebServer::generateAutoindex(const std::string & dirPath, const std::string & requestPath)
+{
+	std::vector<std::string>	items;
+	struct dirent *				entry;
+	std::string					requestPathWithSlash;
+	std::string					displayPath;
+	std::string					fullPath;
+	std::string					result;
+	struct stat					entryStat;
+	size_t						i;
+	DIR *						dir;
+	char						buffer[64];
+
+	dir = opendir(dirPath.c_str());
+	if (dir == NULL)
+		return ("");
+	result = "<html>\n<head>\n<title>Index of ";
+	result += escapeHtml(requestPath);
+	result += "</title>\n</head>\n<body>\n<h1>Index of ";
+	result += escapeHtml(requestPath);
+	result += "</h1>\n<hr>\n<pre>\n";
+	requestPathWithSlash = requestPath;
+	if (requestPathWithSlash.empty() || requestPathWithSlash[requestPathWithSlash.length() - 1] != '/')
+		requestPathWithSlash += '/';
+	if (requestPath != "/")
+		result += "<a href=\"../\">../</a>\n";
+	while (true)
+	{
+		entry = readdir(dir);
+		if (entry == NULL)
+			break;
+		if (entry->d_name[0] == '.' && entry->d_name[1] == '\0')
+			continue;
+		if (entry->d_name[0] == '.' && entry->d_name[1] == '.' && entry->d_name[2] == '\0')
+			continue;
+		items.push_back(std::string(entry->d_name));
+	}
+	closedir(dir);
+	i = 0;
+	while (i < items.size())
+	{
+		fullPath = dirPath;
+		if (fullPath[fullPath.length() - 1] != '/')
+			fullPath += '/';
+		fullPath += items[i];
+		if (stat(fullPath.c_str(), &entryStat) == 0)
+		{
+			result += "<a href=\"";
+			result += escapeHtml(items[i]);
+			if (S_ISDIR(entryStat.st_mode))
+				result += "/";
+			result += "\">";
+			result += escapeHtml(items[i]);
+			if (S_ISDIR(entryStat.st_mode))
+				result += "/";
+			result += "</a>";
+			if (S_ISDIR(entryStat.st_mode))
+				result += "                    -";
+			else
+			{
+				while (result.length() < 50)
+					result += " ";
+				result += formatFileSize(entryStat.st_size);
+			}
+			while (result.length() < 70)
+				result += " ";
+			strftime(buffer, sizeof(buffer), "%d-%b-%Y %H:%M", localtime(&entryStat.st_mtime));
+			result += buffer;
+			result += "\n";
+		}
+		++i;
+	}
+	result += "</pre>\n<hr>\n</body>\n</html>\n";
+	return (result);
+}
+
+std::string	WebServer::formatFileSize(off_t size)
+{
+	std::ostringstream	stream;
+	char				buffer[64];
+
+	if (size < 1024)
+		stream << size << " B";
+	else if (size < 1024 * 1024)
+	{
+		std::snprintf(buffer, sizeof(buffer), "%.1f KB", size / 1024.0);
+		stream << buffer;
+	}
+	else if (size < 1024 * 1024 * 1024)
+	{
+		std::snprintf(buffer, sizeof(buffer), "%.1f MB", size / (1024.0 * 1024.0));
+		stream << buffer;
+	}
+	else
+	{
+		std::snprintf(buffer, sizeof(buffer), "%.2f GB", size / (1024.0 * 1024.0 * 1024.0));
+		stream << buffer;
+	}
+	return (stream.str());
+}
+
+std::string	WebServer::escapeHtml(const std::string & str)
+{
+	std::string	result;
+	size_t		i;
+	char		c;
+
+	i = 0;
+	while (i < str.length())
+	{
+		c = str[i];
+		if (c == '&')
+			result += "&amp;";
+		else if (c == '<')
+			result += "&lt;";
+		else if (c == '>')
+			result += "&gt;";
+		else if (c == '"')
+			result += "&quot;";
+		else
+			result += c;
+		++i;
+	}
+	return (result);
 }
 
 /**
@@ -469,7 +814,7 @@ std::string WebServer::handleDirectoryPath(const std::string & dirPath, const Se
  *
  * It's wrong because the server will handle POLLIN only
  */
-void WebServer::run()
+void	WebServer::run()
 {
 	extern volatile	sig_atomic_t	g_running;
 	size_t							i;
@@ -523,7 +868,7 @@ void WebServer::run()
 	pendingResponses.clear();
 }
 
-void WebServer::stop()
+void	WebServer::stop()
 {
 	running = false;
 }

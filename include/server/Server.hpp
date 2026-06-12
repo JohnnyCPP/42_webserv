@@ -6,6 +6,18 @@
 
 class Server
 {
+private:
+
+	ServerConfig				config;
+	int							listenFd;
+	std::string					host;
+	int							port;
+
+	void				parseListenAddress(const std::string & addr, std::string & outHost, int & outPort);
+	void				bindSocket();
+	void				makeNonBlocking(int fd);
+	void				startListening();
+
 public:
 
 	Server();
@@ -18,18 +30,6 @@ public:
 	int					getListenFd() const;
 	const ServerConfig&	getConfig() const;
 	int					acceptConnection();
-
-private:
-
-	ServerConfig				config;
-	int							listenFd;
-	std::string					host;
-	int							port;
-
-	void	parseListenAddress(const std::string & addr, std::string & outHost, int & outPort);
-	void	bindSocket();
-	void	makeNonBlocking(int fd);
-	void	startListening();
 };
 
 #endif

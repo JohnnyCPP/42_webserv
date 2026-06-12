@@ -21,13 +21,13 @@ private:
 	bool								chunked;
 	bool								error;
 
-	void	parseRequestLine(const std::string & line);
-	void	parseHeaderLine(const std::string & line);
-	void	processHeaders();
-	void	extractBody();
-	bool	isValidMethod(const std::string & method) const;
-	bool	isValidVersion(const std::string & version) const;
-	void	resetParseState();
+	void										parseRequestLine(const std::string & line);
+	void										parseHeaderLine(const std::string & line);
+	void										processHeaders();
+	void										extractBody();
+	bool										isValidMethod(const std::string & method) const;
+	bool										isValidVersion(const std::string & version) const;
+	void										resetParseState();
 
 public:
 
