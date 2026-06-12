@@ -938,7 +938,10 @@ void	WebServer::handleDeleteRequest(int fd, RequestContext & context)
 	std::string		targetPath;
 	struct stat		statbuf;
 
-	targetPath = context.getResolvedPath();
+	if (context.getMatchedLocation() != NULL && !context.getMatchedLocation()->getUploadStore().empty())
+		targetPath = getUploadPath(context);
+	else
+		targetPath = context.getResolvedPath();
 	if (stat(targetPath.c_str(), &statbuf) != 0)
 	{
 		response = HttpResponse::notFound();
