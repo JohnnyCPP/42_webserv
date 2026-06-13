@@ -7,18 +7,22 @@
 # include "client/Client.hpp"
 # include "http/HttpResponse.hpp"
 # include "http/RequestContext.hpp"
+# include "cgi/CgiHandler.hpp"
 
 class WebServer
 {
 private:
 
-	std::vector<Server>			servers;
-	std::vector<struct pollfd>	pollFds;
-	std::map<int, Client>		clients;
-	std::map<int, Server*>		clientToServer;
-	std::map<int, std::string>	pendingResponses;
-	std::vector<int>			clientsToRemove;
-	bool						running;
+	std::vector<Server>					servers;
+	std::vector<struct pollfd>			pollFds;
+	std::map<int, Client>				clients;
+	std::map<int, Server*>				clientToServer;
+	std::map<int, std::string>			pendingResponses;
+	std::vector<int>					clientsToRemove;
+	bool								running;
+	CgiHandler							cgiHandler;
+	std::map<int, int>					clientToPipe;
+	std::map<int, const ServerConfig *>	pipeToServer;
 
 	void		addToPoll(int fd, short events);
 	void		removeFromPoll(int fd);

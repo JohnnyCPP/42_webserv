@@ -143,6 +143,12 @@ void	WebServer::handlePollIn(struct pollfd current)
 		}
 		++i;
 	}
+	if (cgiHandler.hasActiveCgi() && pipeToServer.find(current.fd) != pipeToServer.end())
+	{
+		log("webserv has active CGI");
+		cgiHandler.handlePipeOutput(current.fd, pendingResponses, pollFds, clientToPipe, pipeToServer);
+		return;
+	}
 	handleClientRead(current.fd);
 }
 
@@ -171,7 +177,11 @@ void	WebServer::handlePollOut(struct pollfd current)
 	remaining = it->second.size();
 	bytesSent = send(current.fd, data, remaining, 0);
 	if (bytesSent == -1)
+	{
+		logError("an error occured during a call to send()");
+		removeClient(current.fd);
 		return;
+	}
 	stream.str("");
 	stream.clear();
 	stream << "webserv sent " << bytesSent << " bytes";
@@ -216,6 +226,15 @@ void	WebServer::handlePollErr(struct pollfd current)
 
 	stream << "webserv detected a POLLERR, POLLHUP, or POLLNVAL event on socket " << current.fd;
 	logError(stream.str());
+	stream.str("");
+	stream.clear();
+	if (cgiHandler.hasActiveCgi() && pipeToServer.find(current.fd) != pipeToServer.end())
+	{
+			stream << "handling CGI pipe error/close for fd " << current.fd;
+			log(stream.str());
+			cgiHandler.handlePipeOutput(current.fd, pendingResponses, pollFds, clientToPipe, pipeToServer);
+			return;
+	}
 	close(current.fd);
 	removeFromPoll(current.fd);
 }
@@ -275,8 +294,12 @@ void	WebServer::handleClientRead(int fd)
 			removeClient(fd);
 			return;
 		}
-		else
+		else if (bytesRead == -1)
+		{
+			logError("an error occured during a call to recv()");
+			removeClient(fd);
 			keepReading = false;
+		}
 	}
 	if (it->second.hasError())
 	{
@@ -346,6 +369,12 @@ void	WebServer::processClientRequest(int fd)
 		response = HttpResponse::methodNotAllowed(allowedHeader, context.getTargetServer());
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
+		return;
+	}
+	resolveFilesystemPath(context);
+	if (cgiHandler.isCgiRequest(context))
+	{
+		cgiHandler.startExecution(fd, *client, context, pollFds, clientToPipe, pipeToServer);
 		return;
 	}
 	if (context.hasRedirect())
