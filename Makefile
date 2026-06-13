@@ -96,18 +96,16 @@ fclean: clean
 re: fclean all
 
 
-HEADERS_TEST	:= test_headers
-BODY_TEST		:= test_body
-REQLINE_TEST	:= test_request_line
-PARSER_SRCS		:= ${SRC_DIR}request.cpp ${SRC_DIR}RequestLine.cpp
-
+# Unit tests compile against the real source files (see tests/unit/run.sh).
 test:
-	@$(CXX) $(CXXFLAGS) $(INCLUDES) ${PARSER_SRCS} ./tests/test_headers.cpp -o $(HEADERS_TEST)
-	@./$(HEADERS_TEST)
-	@$(CXX) $(CXXFLAGS) $(INCLUDES) ${PARSER_SRCS} ./tests/test_body.cpp -o $(BODY_TEST)
-	@./$(BODY_TEST)
-	@$(CXX) $(CXXFLAGS) $(INCLUDES) ${PARSER_SRCS} ./tests/test_request_line.cpp -o $(REQLINE_TEST)
-	@./$(REQLINE_TEST)
+	@./tests/unit/run.sh
+
+# Black-box functional tests: build the server, then drive it over HTTP.
+test-functional: all
+	@./tests/functional/run.sh
+
+# Whole suite.
+test-all: test test-functional
 
 
 sanitize: ${OBJ_FILES}
@@ -137,4 +135,4 @@ help:
 -include $(DEPS)
 
 
-.PHONY: all clean fclean re sanitize valgrind gdb help
+.PHONY: all clean fclean re sanitize valgrind gdb help test test-functional test-all

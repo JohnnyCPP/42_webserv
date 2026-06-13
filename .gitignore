@@ -1,5 +1,7 @@
 webserv
-test_headers
-test_body
-test_request_line
 obj/
+
+tests/
+test_*
+!test_*.cpp
+test.log

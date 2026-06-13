@@ -6,7 +6,7 @@
 namespace WebServ
 {
 	const std::string	CRLF = "\r\n";
-	const std::string	DEFAULT_CONFIG_PATH = "./config/complete.conf";
+	const std::string	DEFAULT_CONFIG_PATH = "./config/default.conf";
 	const std::string	DEFAULT_HOST = "0.0.0.0";
 	const std::string	DEFAULT_INDEX = "index.html";
 	const std::string	DEFAULT_UPLOADS = "./uploads";
