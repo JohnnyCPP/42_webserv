@@ -53,6 +53,9 @@ private:
 	void		handlePostRequest(int fd, RequestContext & context, Client & client);
 	void		handleDeleteRequest(int fd, RequestContext & context);
 
+	void		applyErrorPage(HttpResponse & response, const RequestContext & context);
+	void		queueError(int fd, HttpResponse & response, const RequestContext & context);
+
 public:
 
 	WebServer();

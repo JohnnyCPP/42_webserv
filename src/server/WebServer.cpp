@@ -327,8 +327,7 @@ void	WebServer::processClientRequest(int fd)
 		logError("method not allowed");
 		allowedHeader = generateAllowedMethodsHeader(context);
 		response = HttpResponse::methodNotAllowed(allowedHeader);
-		pendingResponses[fd] = response.toString();
-		modifyPollEvents(fd, POLLOUT);
+		queueError(fd, response, context);
 		return;
 	}
 	if (context.hasRedirect())
@@ -354,8 +353,7 @@ void	WebServer::processClientRequest(int fd)
 	{
 		log(std::string("resource ") + context.getResolvedPath() + std::string(" was not found"));
 		response = HttpResponse::notFound();
-		pendingResponses[fd] = response.toString();
-		modifyPollEvents(fd, POLLOUT);
+		queueError(fd, response, context);
 		return;
 	}
 	if (S_ISDIR(statbuf.st_mode))
@@ -395,10 +393,9 @@ void	WebServer::processClientRequest(int fd)
 		context.setResolvedPath(handleDirectoryPath(context));
 		if (stat(context.getResolvedPath().c_str(), &statbuf) != 0)
 		{
-			logError(std::string("resource ") + context.getResolvedPath() + std::string(" was not found"));
-			response = HttpResponse::notFound();
-			pendingResponses[fd] = response.toString();
-			modifyPollEvents(fd, POLLOUT);
+			log(std::string("directory ") + context.getResolvedPath() + std::string(" has no index file and autoindex is off"));
+			response = HttpResponse::forbidden();
+			queueError(fd, response, context);
 			return;
 		}
 	}
@@ -406,8 +403,7 @@ void	WebServer::processClientRequest(int fd)
 	{
 		log(std::string("resource ") + context.getResolvedPath() + std::string(" is not a regular file. It may be a device, socket, symlink, or other"));
 		response = HttpResponse::forbidden();
-		pendingResponses[fd] = response.toString();
-		modifyPollEvents(fd, POLLOUT);
+		queueError(fd, response, context);
 		return;
 	}
 	response.setBodyFromFile(context.getResolvedPath());
@@ -883,6 +879,49 @@ std::string	WebServer::generateAllowedMethodsHeader(const RequestContext & conte
 }
 
 /**
+ * Replaces an error response's body with the server's configured error_page,
+ * when one exists for that status code and the file can be read. The status
+ * code is preserved; on any failure the default body set by the factory stays.
+ */
+void	WebServer::applyErrorPage(HttpResponse & response, const RequestContext & context)
+{
+	std::map<int, std::string>::const_iterator	it;
+	std::stringstream							buffer;
+	std::ifstream								file;
+	std::string									path;
+
+	if (context.getTargetServer() == NULL)
+		return;
+	const std::map<int, std::string> &	pages = context.getTargetServer()->getErrorPages();
+	it = pages.find(response.getStatusCode());
+	if (it == pages.end())
+		return;
+	path = context.getTargetServer()->getRoot();
+	if (!path.empty() && path[path.length() - 1] == '/')
+		path.erase(path.length() - 1);
+	if (!it->second.empty() && it->second[0] != '/')
+		path += '/';
+	path += it->second;
+	file.open(path.c_str());
+	if (!file.is_open())
+	{
+		logError(std::string("error_page not readable: ") + path);
+		return;
+	}
+	buffer << file.rdbuf();
+	file.close();
+	response.setBody(buffer.str());
+	response.setContentType(".html");
+}
+
+void	WebServer::queueError(int fd, HttpResponse & response, const RequestContext & context)
+{
+	applyErrorPage(response, context);
+	pendingResponses[fd] = response.toString();
+	modifyPollEvents(fd, POLLOUT);
+}
+
+/**
  * The flag std::ios::out opens a file for writing.
  *
  * The flag std::ios::binary opens a file in binary mode:
@@ -904,15 +943,13 @@ void	WebServer::handlePostRequest(int fd, RequestContext & context, Client & cli
 
 	if (!validateBodySize(client, response))
 	{
-		pendingResponses[fd] = response.toString();
-		modifyPollEvents(fd, POLLOUT);
+		queueError(fd, response, context);
 		return;
 	}
 	if (context.getMatchedLocation() == NULL || context.getMatchedLocation()->getUploadStore().empty())
 	{
 		response = HttpResponse::notImplemented();
-		pendingResponses[fd] = response.toString();
-		modifyPollEvents(fd, POLLOUT);
+		queueError(fd, response, context);
 		return;
 	}
 	uploadPath = getUploadPath(context);
@@ -920,8 +957,7 @@ void	WebServer::handlePostRequest(int fd, RequestContext & context, Client & cli
 	if (!file.is_open())
 	{
 		response = HttpResponse::internalServerError();
-		pendingResponses[fd] = response.toString();
-		modifyPollEvents(fd, POLLOUT);
+		queueError(fd, response, context);
 		return;
 	}
 	file.write(client.getBody().c_str(), client.getBody().size());
@@ -945,22 +981,19 @@ void	WebServer::handleDeleteRequest(int fd, RequestContext & context)
 	if (stat(targetPath.c_str(), &statbuf) != 0)
 	{
 		response = HttpResponse::notFound();
-		pendingResponses[fd] = response.toString();
-		modifyPollEvents(fd, POLLOUT);
+		queueError(fd, response, context);
 		return;
 	}
 	if (access(targetPath.c_str(), W_OK) != 0)
 	{
 		response = HttpResponse::forbidden();
-		pendingResponses[fd] = response.toString();
-		modifyPollEvents(fd, POLLOUT);
+		queueError(fd, response, context);
 		return;
 	}
 	if (unlink(targetPath.c_str()) != 0)
 	{
 		response = HttpResponse::internalServerError();
-		pendingResponses[fd] = response.toString();
-		modifyPollEvents(fd, POLLOUT);
+		queueError(fd, response, context);
 		return;
 	}
 	response = HttpResponse::noContent();
