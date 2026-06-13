@@ -441,11 +441,22 @@ void	WebServer::processClientRequest(int fd)
 		}
 		else
 		{
-			logError("403 autoindex is disabled");
-			response = HttpResponse::forbidden(context.getTargetServer());
-			pendingResponses[fd] = response.toString();
-			modifyPollEvents(fd, POLLOUT);
-			return;
+			indexPath = context.getResolvedPath();
+			if (indexPath[indexPath.length() - 1] != '/')
+				indexPath += '/';
+			if (context.getMatchedLocation() != NULL && !context.getMatchedLocation()->getIndex().empty())
+				indexPath += context.getMatchedLocation()->getIndex();
+			else
+				indexPath += context.getTargetServer()->getIndex();
+			hasIndexFile = (stat(indexPath.c_str(), &statbuf) == 0 && S_ISREG(statbuf.st_mode));
+			if (!hasIndexFile)
+			{
+				logError("403 autoindex is disabled and no index file");
+				response = HttpResponse::forbidden(context.getTargetServer());
+				pendingResponses[fd] = response.toString();
+				modifyPollEvents(fd, POLLOUT);
+				return;
+			}
 		}
 		context.setResolvedPath(handleDirectoryPath(context));
 		if (stat(context.getResolvedPath().c_str(), &statbuf) != 0)
