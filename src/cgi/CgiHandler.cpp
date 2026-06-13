@@ -142,16 +142,116 @@ std::string	CgiHandler::findInterpreter(const std::string & scriptPath) const
 	return ("");
 }
 
-std::string	CgiHandler::parseCgiOutput(const std::string & output) const
+std::string	CgiHandler::parseCgiOutput(const std::string & output, HttpResponse & response) const
 {
-	std::string	body;
-	size_t		headerEnd;
+	std::ostringstream	stream;
+	std::string			normalized;
+	std::string			value;
+	std::string			body;
+	std::string			line;
+	std::string			key;
+	size_t				expectedLength;
+	size_t				headerEnd;
+	size_t				colonPos;
+	size_t				lineEnd;
+	size_t				pos;
+	size_t				i;
+	bool				hasContentLength;
+	bool				hasStatus;
 
-	headerEnd = output.find(WebServ::CRLF + WebServ::CRLF);
-	if (headerEnd != std::string::npos)
-		body = output.substr(headerEnd + 4);
+	log(std::string("CGI output is being parsed:\n") + output);
+	normalized = output;
+	if (normalized.find(WebServ::CRLF + WebServ::CRLF) == std::string::npos)
+	{
+		if (normalized.find("\n\n") != std::string::npos)
+		{
+			log("CGI output ends lines with double line feeds instead of CRLF");
+			i = 0;
+			while (i < normalized.length())
+			{
+					if (normalized[i] == '\n' && (i == 0 || normalized[i - 1] != '\r'))
+					{
+							normalized.insert(i, "\r");
+							++i;
+					}
+					++i;
+			}
+		}
+	}
+	headerEnd = normalized.find(WebServ::CRLF + WebServ::CRLF);
+	if (headerEnd == std::string::npos)
+	{
+		log("CGI headers not found");
+		log("assigning status code 200 and Content-Type text/html");
+		log("assigning CGI output to response body");
+		response.setStatus(200);
+		response.setHeader("Content-Type", "text/html");
+		response.setBody(output);
+		return (output);
+	}
 	else
-		body = output;
+		log("CGI headers found");
+	pos = 0;
+	hasContentLength = false;
+	expectedLength = 0;
+	while (pos < headerEnd)
+	{
+		lineEnd = normalized.find(WebServ::CRLF, pos);
+		if (lineEnd == std::string::npos)
+			break;
+		line = normalized.substr(pos, lineEnd - pos);
+		if (line.empty())
+		{
+			pos = lineEnd + 2;
+			continue;
+		}
+		colonPos = line.find(':');
+		if (colonPos == std::string::npos)
+		{
+			log(std::string("found malformed header:") + line);
+			pos = lineEnd + 2;
+			continue;
+		}
+		key = line.substr(0, colonPos);
+		value = line.substr(colonPos + 1);
+		while (!value.empty() && (value[0] == ' ' || value[0] == '\t'))
+			value.erase(0, 1);
+		stream.str("");
+		stream.clear();
+		stream << "parsing header " << key << ": " << value;
+		log(stream.str());
+		if (key == "Status")
+		{
+			hasStatus = true;
+			response.setStatus(std::atoi(value.c_str()));
+		}
+		else if (key == "Content-Length")
+		{
+			hasContentLength = true;
+			expectedLength = std::atoi(value.c_str());
+			response.setHeader(key, value);
+		}
+		else
+			response.setHeader(key, value);
+		pos = lineEnd + 2;
+	}
+	body = normalized.substr(headerEnd + 4);
+	if (hasContentLength)
+	{
+		response.setRawBody(body);
+		if (body.size() != expectedLength)
+		{
+			stream.str("");
+			stream.clear();
+			stream << "CGI body size " << body.size()
+					<< " does not match Content-Length " << expectedLength;
+			logError(stream.str());
+		}
+	}
+	else
+		response.setBody(body);
+	if (!hasStatus)
+		response.setStatus(200);
 	return (body);
 }
 
@@ -209,17 +309,15 @@ void	CgiHandler::startExecution(int clientFd, const Client & client, const Reque
 		logError(std::string("no interpreter found for ") + scriptPath);
 		return;
 	}
-	stream << "executing CGI script " << scriptPath << " with " << interpreter;
-	log(stream.str());
 	if (pipe(pipeStdin) == -1 || pipe(pipeStdout) == -1)
 	{
-		logError(std::string("pipe() failed"));
+		logError("pipe() failed");
 		return;
 	}
 	pid = fork();
 	if (pid == -1)
 	{
-		logError(std::string("fork() failed"));
+		logError("fork() failed");
 		close(pipeStdin[0]);
 		close(pipeStdin[1]);
 		close(pipeStdout[0]);
@@ -228,6 +326,8 @@ void	CgiHandler::startExecution(int clientFd, const Client & client, const Reque
 	}
 	if (pid == 0)
 	{
+		stream << "child is executing CGI script " << scriptPath << " with " << interpreter;
+		log(stream.str());
 		close(pipeStdin[1]);
 		close(pipeStdout[0]);
 		dup2(pipeStdin[0], STDIN_FILENO);
@@ -258,12 +358,14 @@ void	CgiHandler::startExecution(int clientFd, const Client & client, const Reque
 		logError(std::string("execve() failed"));
 		std::exit(EXIT_FAILURE);
 	}
+	log("parent is writing child output to write-end of pipe");
 	close(pipeStdin[0]);
 	close(pipeStdout[1]);
 	stdinWriteFd = pipeStdin[1];
 	stdoutReadFd = pipeStdout[0];
 	write(stdinWriteFd, client.getBody().c_str(), client.getBody().size());
 	close(stdinWriteFd);
+	log("parent is adding read-end of non-blocking pipe to FD list of poll()");
 	fcntl(stdoutReadFd, F_SETFL, O_NONBLOCK);
 	this->pid = pid;
 	this->pipeStdin = -1;
@@ -279,11 +381,11 @@ void	CgiHandler::startExecution(int clientFd, const Client & client, const Reque
 	clientToPipe[clientFd] = stdoutReadFd;
 	stream.str("");
 	stream.clear();
-	stream << "CGI started for client " << clientFd << ", monitoring pipe " << stdoutReadFd;
+	stream << "CGI is ready for client " << clientFd << " pipe " << stdoutReadFd;
 	log(stream.str());
 }
 
-void	CgiHandler::handlePipeOutput(int pipeFd, std::map<int, std::string> & pendingResponses, std::vector<struct pollfd> & pollFds, std::map<int, int> & clientToPipe, std::map<int, const ServerConfig *> & pipeToServer)
+int	CgiHandler::handlePipeOutput(int pipeFd, std::map<int, std::string> & pendingResponses, std::vector<struct pollfd> & pollFds, std::map<int, int> & clientToPipe, std::map<int, const ServerConfig *> & pipeToServer)
 {
 	std::ostringstream	stream;
 	HttpResponse		response;
@@ -292,46 +394,34 @@ void	CgiHandler::handlePipeOutput(int pipeFd, std::map<int, std::string> & pendi
 	pid_t				waitResult;
 	char				buffer[WebServ::CGI_BUFFER];
 	int					status;
-	int					aux;
+	int					pipeToRemove;
 
 	if (!isActive || pipeStdout != pipeFd)
-		return;
-	stream << "CGI reading from pipe " << pipeFd;
+		return (-1);
+	stream << "CGI reading from client " << clientFd << " pipe " << pipeFd;
 	log(stream.str());
-	bytesRead = read(pipeStdout, buffer, sizeof(buffer) - 1);
-	stream.str("");
-	stream.clear();
-	stream << "CGI read returned " << bytesRead << " bytes";
-	log(stream.str());
-	stream.str("");
-	stream.clear();
-	if (bytesRead > 0)
+	while (true)
 	{
-		buffer[bytesRead] = '\0';
-		output += buffer;
-		stream << "CGI accumulated output: " << output.size() << " bytes";
-		log(stream.str());
-		return;
-	}
-	if (bytesRead == 0)
-		log("CGI pipe EOF, closing");
-	else
-		logError("CGI pipe error");
-	close(pipeStdout);
-	stream.str("");
-	stream.clear();
-	i = 0;
-	while (i < pollFds.size())
-	{
-		if (pollFds[i].fd == pipeStdout)
+		bytesRead = read(pipeStdout, buffer, sizeof(buffer) - 1);
+		if (bytesRead > 0)
 		{
-			pollFds.erase(pollFds.begin() + i);
-			stream << "Removed pipe " << pipeStdout << " from pollFds";
+			buffer[bytesRead] = '\0';
+			output += buffer;
+			stream.str("");
+			stream.clear();
+			stream << "CGI read " << output.size() << " bytes...";
 			log(stream.str());
+		}
+		if (bytesRead == 0)
+		{
+			log("CGI pipe EOF, closing");
 			break;
 		}
-		++i;
+		else if (bytesRead == -1)
+			break;
 	}
+	pipeToRemove = pipeStdout;
+	close(pipeStdout);
 	waitResult = waitpid(pid, &status, WNOHANG);
 	if (waitResult == 0)
 	{
@@ -340,35 +430,32 @@ void	CgiHandler::handlePipeOutput(int pipeFd, std::map<int, std::string> & pendi
 	}
 	if (WIFEXITED(status) && WEXITSTATUS(status) != 0)
 	{
+		stream.str("");
+		stream.clear();
 		stream << "CGI script exited with status " << WEXITSTATUS(status);
 		logError(stream.str());
 	}
-	response.setStatus(200);
-	response.setHeader("Content-Type", "text/html");
-	response.setBody(parseCgiOutput(output));
+	parseCgiOutput(output, response);
 	pendingResponses[clientFd] = response.toString();
-	stream.str("");
-	stream.clear();
+	log("added CGI output to pending responses");
 	i = 0;
 	while (i < pollFds.size())
 	{
 			if (pollFds[i].fd == clientFd)
 			{
 					pollFds[i].events = POLLOUT;
-					stream << "Changed client " << clientFd << " poll events to POLLOUT";
-					log(stream.str());
 					break;
 			}
 			++i;
 	}
-	aux = clientFd;
+	stream.str("");
+	stream.clear();
+	stream << "CGI completed for client " << clientFd << " pipe " << pipeFd;
+	log(stream.str());
 	clientToPipe.erase(clientFd);
 	pipeToServer.erase(pipeStdout);
 	cleanup();
-	stream.str("");
-	stream.clear();
-	stream << "CGI completed for client " << aux;
-	log(stream.str());
+	return (pipeToRemove);
 }
 
 bool	CgiHandler::isCgiRequest(const RequestContext & context) const

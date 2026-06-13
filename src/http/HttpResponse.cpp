@@ -50,6 +50,14 @@ void	HttpResponse::setHeader(const std::string & key, const std::string & value)
 	headers[key] = value;
 }
 
+void	HttpResponse::setRawBody(const std::string & body)
+{
+	std::ostringstream	contentLength;
+
+	this->body = body;
+	contentLength << this->body.size();
+}
+
 void	HttpResponse::setBody(const std::string & body)
 {
 	std::ostringstream	contentLength;

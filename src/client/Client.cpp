@@ -33,7 +33,7 @@ Client::Client(const Client & that)
 	  headers(that.headers),
 	  body(that.body),
 	  contentLength(that.contentLength),
-	  maxBodySize(that.contentLength),
+	  maxBodySize(that.maxBodySize),
 	  headersComplete(that.headersComplete),
 	  requestComplete(that.requestComplete),
 	  chunked(that.chunked),
@@ -259,15 +259,18 @@ void	Client::parseRequestLine(const std::string & line)
 	size_t	firstSpace;
 	size_t	secondSpace;
 
+	log(std::string("parsing request line: ") + line);
 	firstSpace = line.find(' ');
 	if (firstSpace == std::string::npos)
 	{
+		logError("first space not found");
 		error = true;
 		return;
 	}
 	secondSpace = line.find(' ', firstSpace + 1);
 	if (secondSpace == std::string::npos)
 	{
+		logError("second space not found");
 		error = true;
 		return;
 	}
@@ -275,9 +278,15 @@ void	Client::parseRequestLine(const std::string & line)
 	path = line.substr(firstSpace + 1, secondSpace - firstSpace - 1);
 	version = line.substr(secondSpace + 1);
 	if (!isValidMethod(method))
+	{
+		logError("method is not valid");
 		error = true;
+	}
 	if (!isValidVersion(version))
+	{
+		logError("version is not valid");
 		error = true;
+	}
 }
 
 void	Client::parseHeaderLine(const std::string & line)
@@ -327,8 +336,9 @@ void	Client::processHeaders()
 
 void	Client::extractBody()
 {
-	std::string	remaining;
-	size_t		headerEnd;
+	std::ostringstream	stream;
+	std::string			remaining;
+	size_t				headerEnd;
 
 	if (requestComplete)
 		return;
@@ -340,6 +350,7 @@ void	Client::extractBody()
 	{
 		if (remaining.size() > maxBodySize)
 		{
+			logError("chunked body is greater than max body size");
 			error = true;
 			return;
 		}
@@ -351,6 +362,9 @@ void	Client::extractBody()
 	{
 		if (contentLength > maxBodySize)
 		{
+			stream << "Content-Length " << contentLength
+					<< " is greater than max body size " << maxBodySize;
+			logError(stream.str());
 			error = true;
 			return;
 		}

@@ -32,6 +32,7 @@ public:
 	void				setStatus(int code);
 	void				setStatus(int code, const std::string & message);
 	void				setHeader(const std::string & key, const std::string & value);
+	void				setRawBody(const std::string & body);
 	void				setBody(const std::string & body);
 	void				setBodyFromFile(const std::string & path);
 	void				setContentType(const std::string & path);

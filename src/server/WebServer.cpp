@@ -6,8 +6,14 @@ WebServer::WebServer()
 	: servers(),
 	  pollFds(),
 	  clients(),
+	  clientToServer(),
 	  pendingResponses(),
-	  running(false)
+	  clientsToRemove(),
+	  pipesToRemove(),
+	  running(false),
+	  cgiHandler(),
+	  clientToPipe(),
+	  pipeToServer()
 {
 }
 
@@ -19,16 +25,28 @@ WebServer::WebServer(const WebServer & that)
 	: servers(that.servers),
 	  pollFds(that.pollFds),
 	  clients(that.clients),
+	  clientToServer(that.clientToServer),
 	  pendingResponses(that.pendingResponses),
-	  running(that.running)
+	  clientsToRemove(that.clientsToRemove),
+	  pipesToRemove(that.pipesToRemove),
+	  running(that.running),
+	  cgiHandler(that.cgiHandler),
+	  clientToPipe(that.clientToPipe),
+	  pipeToServer(that.pipeToServer)
 {
 }
 
 WebServer::WebServer(const Config & config)
 	: pollFds(),
 	  clients(),
+	  clientToServer(),
 	  pendingResponses(),
-	  running(false)
+	  clientsToRemove(),
+	  pipesToRemove(),
+	  running(false),
+	  cgiHandler(),
+	  clientToPipe(),
+	  pipeToServer()
 {
 	const std::vector<ServerConfig> &	serverConfigs = config.getServers();
 	size_t								i;
@@ -61,8 +79,14 @@ WebServer &	WebServer::operator=(const WebServer & that)
 		servers = that.servers;
 		pollFds = that.pollFds;
 		clients = that.clients;
+		clientToServer = that.clientToServer;
 		pendingResponses = that.pendingResponses;
+		clientsToRemove = that.clientsToRemove;
+		pipesToRemove = that.pipesToRemove;
 		running = that.running;
+		cgiHandler = that.cgiHandler;
+		clientToPipe = that.clientToPipe;
+		pipeToServer = that.pipeToServer;
 	}
 	return (*this);
 }
@@ -120,6 +144,7 @@ void	WebServer::handlePollIn(struct pollfd current)
 	std::ostringstream	stream;
 	size_t				i;
 	int					clientFd;
+	int					pipe;
 
 	stream << "webserv detected a POLLIN event on socket " << current.fd;
 	log(stream.str());
@@ -131,7 +156,9 @@ void	WebServer::handlePollIn(struct pollfd current)
 			clientFd = servers[i].acceptConnection();
 			if (clientFd != -1)
 			{
-				clients.insert(std::make_pair(clientFd, Client(clientFd)));
+				Client client(clientFd);
+				client.setMaxBodySize(servers[i].getConfig().getClientMaxBodySize());
+				clients.insert(std::make_pair(clientFd, client));
 				addToPoll(clientFd, POLLIN);
 				clientToServer[clientFd] = &servers[i];
 				stream.str("");
@@ -145,8 +172,15 @@ void	WebServer::handlePollIn(struct pollfd current)
 	}
 	if (cgiHandler.hasActiveCgi() && pipeToServer.find(current.fd) != pipeToServer.end())
 	{
-		log("webserv has active CGI");
-		cgiHandler.handlePipeOutput(current.fd, pendingResponses, pollFds, clientToPipe, pipeToServer);
+		pipe = cgiHandler.handlePipeOutput(current.fd, pendingResponses, pollFds, clientToPipe, pipeToServer);
+		if (pipe != -1)
+		{
+			stream.str("");
+			stream.clear();
+			stream << "webserv marked pipe " << pipe << " for removal";
+			log(stream.str());
+			pipesToRemove.push_back(pipe);
+		}
 		return;
 	}
 	handleClientRead(current.fd);
@@ -262,15 +296,15 @@ void	WebServer::handlePollErr(struct pollfd current)
 void	WebServer::handleClientRead(int fd)
 {
 	std::map<int, Server*>::iterator	serverIt;
-	std::map<int, Client>::iterator		it;
+	std::map<int, Client>::iterator		clientIt;
 	std::ostringstream					stream;
 	HttpResponse						response;
 	ssize_t								bytesRead;
 	char								buffer[WebServ::RECV_BUFFER_SIZE];
 	bool								keepReading;
 
-	it = clients.find(fd);
-	if (it == clients.end())
+	clientIt = clients.find(fd);
+	if (clientIt == clients.end())
 		return;
 	stream << "webserv is reading a client request on socket " << fd;
 	log(stream.str());
@@ -284,9 +318,9 @@ void	WebServer::handleClientRead(int fd)
 			stream.clear();
 			stream << "webserv read " << bytesRead << " bytes from client socket " << fd;
 			log(stream.str());
-			it->second.appendToBuffer(std::string(buffer, bytesRead));
-			it->second.parseRequest();
-			if (it->second.isRequestComplete() || it->second.hasError())
+			clientIt->second.appendToBuffer(std::string(buffer, bytesRead));
+			clientIt->second.parseRequest();
+			if (clientIt->second.isRequestComplete() || clientIt->second.hasError())
 				keepReading = false;
 		}
 		else if (bytesRead == 0)
@@ -301,7 +335,7 @@ void	WebServer::handleClientRead(int fd)
 			keepReading = false;
 		}
 	}
-	if (it->second.hasError())
+	if (clientIt->second.hasError())
 	{
 		stream.str("");
 		stream.clear();
@@ -316,7 +350,7 @@ void	WebServer::handleClientRead(int fd)
 		modifyPollEvents(fd, POLLOUT);
 		return;
 	}
-	if (it->second.isRequestComplete())
+	if (clientIt->second.isRequestComplete())
 		processClientRequest(fd);
 }
 
@@ -374,6 +408,7 @@ void	WebServer::processClientRequest(int fd)
 	resolveFilesystemPath(context);
 	if (cgiHandler.isCgiRequest(context))
 	{
+		log("CGI handler is starting");
 		cgiHandler.startExecution(fd, *client, context, pollFds, clientToPipe, pipeToServer);
 		return;
 	}
@@ -491,6 +526,38 @@ void	WebServer::removeClient(int fd)
 	clientsToRemove.push_back(fd);
 	stream << "webserv marked client socket " << fd << " for removal";
 	log(stream.str());
+}
+
+void	WebServer::cleanupRemovedPipes()
+{
+	std::ostringstream	stream;
+	size_t				pipesCount;
+	size_t				pollCount;
+	size_t				i;
+	size_t				j;
+
+	log("webserv is looking for removed pipes");
+	pipesCount = pipesToRemove.size();
+	pollCount = pollFds.size();
+	i = 0;
+	while (i < pipesCount)
+	{
+		j = 0;
+		while (j < pollCount)
+		{
+			if (pollFds[j].fd == pipesToRemove[i])
+			{
+				stream << "webserv removed pipe " << pollFds[j].fd;
+				log(stream.str());
+				pollFds.erase(pollFds.begin() + j);
+				pollCount = pollCount - 1;
+				break;
+			}
+			++j;
+		}
+		++i;
+	}
+	pipesToRemove.clear();
 }
 
 void	WebServer::cleanupRemovedClients()
@@ -1041,6 +1108,7 @@ void	WebServer::run()
 	while (running && g_running)
 	{
 		cleanupRemovedClients();
+		cleanupRemovedPipes();
 		log("webserv is executing poll()");
 		readyFds = poll(&pollFds[0], pollFds.size(), -1);
 		if (readyFds == -1)

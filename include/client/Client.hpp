@@ -2,6 +2,7 @@
 # define CLIENT_HPP
 
 # include "webserv.hpp"
+# include "log/log.hpp"
 
 class Client
 {

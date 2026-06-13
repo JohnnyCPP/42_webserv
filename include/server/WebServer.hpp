@@ -19,6 +19,7 @@ private:
 	std::map<int, Server*>				clientToServer;
 	std::map<int, std::string>			pendingResponses;
 	std::vector<int>					clientsToRemove;
+	std::vector<int>					pipesToRemove;
 	bool								running;
 	CgiHandler							cgiHandler;
 	std::map<int, int>					clientToPipe;
@@ -37,6 +38,7 @@ private:
 	void		processClientRequest(int fd);
 	void		removeClient(int fd);
 	void		cleanupRemovedClients();
+	void		cleanupRemovedPipes();
 	void		modifyPollEvents(int fd, short events);
  
 	void		buildRequestContext(int clientFd, RequestContext & context);
