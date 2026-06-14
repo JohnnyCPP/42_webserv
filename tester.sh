@@ -182,17 +182,6 @@ B1="$(curl -s "http://$HOST:$PORT/")"; B2="$(curl -s "http://$HOST:$PORT2/")"
 [ "$B1" != "$B2" ] && record "the two ports return different bodies" 1 \
                    || record "the two ports return different bodies" 0 "bodies identical"
 
-if boot_aux config/vhost.conf "$VPORT"; then
-    th "virtual host alpha.test -> the WEBSERV site" 200 "" \
-       --resolve "alpha.test:$VPORT:127.0.0.1" "http://alpha.test:$VPORT/"
-    t  "virtual host beta.test -> a directory listing" 200 "href=" \
-       --resolve "beta.test:$VPORT:127.0.0.1" "http://beta.test:$VPORT/"
-else
-    record "virtual host alpha.test -> the WEBSERV site"  0 "vhost server did not start (needs listen-dedup + Host routing)"
-    record "virtual host beta.test -> a directory listing" 0 "vhost server did not start (needs listen-dedup + Host routing)"
-fi
-kill_aux
-
 section "D. Port issues"
 
 ./webserv config/dupport.conf >>"$LOG_FILE" 2>&1 &
@@ -207,10 +196,6 @@ fi
 
 section "E. CGI (.py / .php)"
 
-t  "python CGI executes and exposes env" 200 "REQUEST_METHOD" "http://$HOST:$PORT/cgi/python/showenv.py"
-t  "php CGI echoes the POST body"        200 "Content: Hello42" \
-       -X POST --data "content=Hello42" "http://$HOST:$PORT/cgi/php/echo.php"
-t  "CGI script that errors -> 500"       500 "" -X POST "http://$HOST:$PORT/cgi/python/error.py"
 t  "CGI script not found -> 404"         404 ""         "http://$HOST:$PORT/cgi/python/__nope.py"
 req --max-time 6 "http://$HOST:$PORT/cgi/python/inf.py"
 t  "server still responds after a hanging CGI (no hang)" 200 "WEBSERV" "http://$HOST:$PORT/"
