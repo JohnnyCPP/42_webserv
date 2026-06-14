@@ -3,7 +3,7 @@ NAME			:= webserv
 
 CXX				:= c++
 DEBUG_SYMBOLS	:= -g3
-CXXFLAGS		:= -Wall -Wextra -Werror -std=c++98 ${DEBUG_SYMBOLS}
+CXXFLAGS		:= -Wall -Wextra -Werror -std=c++98
 DEPFLAGS		:= -MMD -MP
 
 
