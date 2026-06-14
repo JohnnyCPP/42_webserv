@@ -26,5 +26,12 @@ Developed by JohnnyCPP and igenez-y.
 
 ## Run
 
-TODO
+Clone the repository and run the following make targets:
 
+```bash
+git clone https://github.com/JohnnyCPP/42_webserv.git
+cd 42_webserv
+make help
+make webserv
+./webserv config/default.conf
+```
