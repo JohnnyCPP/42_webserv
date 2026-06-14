@@ -1,0 +1,6 @@
+# This directory is the tester's upload target. Ignore everything that lands
+# here at runtime, but keep the demo fixtures used by the /data listing.
+*
+!.gitignore
+!example
+!Makefile
