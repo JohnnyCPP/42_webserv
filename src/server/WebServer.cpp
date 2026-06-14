@@ -467,15 +467,35 @@ void	WebServer::processClientRequest(int fd)
 	stream << client->getMethod() << " " << client->getPath() << " " << client->getVersion();
 	log(stream.str());
 	clientPath = client->getPath();
-	if (clientPath == ".." || clientPath.find("/../") != std::string::npos
-		|| (clientPath.size() >= 3 && clientPath.compare(0, 3, "../") == 0)
-		|| (clientPath.size() >= 3 && clientPath.compare(clientPath.size() - 3, 3, "/..") == 0))
 	{
-		logError("403 path traversal attempt");
-		response = HttpResponse::forbidden(context.getTargetServer());
-		pendingResponses[fd] = response.toString();
-		modifyPollEvents(fd, POLLOUT);
-		return;
+		bool	badPath;
+		size_t	k;
+
+		badPath = clientPath.empty() || clientPath[0] != '/';
+		for (k = 0; !badPath && k < clientPath.size(); ++k)
+		{
+			unsigned char	c = static_cast<unsigned char>(clientPath[k]);
+			if (c <= 0x20 || c == 0x7F || c == '<' || c == '>' || c == '"'
+				|| c == '{' || c == '}' || c == '|' || c == '\\' || c == '^' || c == '`')
+				badPath = true;
+		}
+		if (badPath)
+		{
+			logError("400 malformed request target");
+			response = HttpResponse::badRequest(context.getTargetServer());
+			pendingResponses[fd] = response.toString();
+			modifyPollEvents(fd, POLLOUT);
+			return;
+		}
+		if (clientPath.find("/../") != std::string::npos
+			|| (clientPath.size() >= 3 && clientPath.compare(clientPath.size() - 3, 3, "/..") == 0))
+		{
+			logError("403 path traversal attempt");
+			response = HttpResponse::forbidden(context.getTargetServer());
+			pendingResponses[fd] = response.toString();
+			modifyPollEvents(fd, POLLOUT);
+			return;
+		}
 	}
 	if (client->getVersion() != WebServ::HTTP_VERSION)
 	{
@@ -505,6 +525,14 @@ void	WebServer::processClientRequest(int fd)
 	resolveFilesystemPath(context);
 	if (cgiHandler.isCgiRequest(context))
 	{
+		if (stat(context.getResolvedPath().c_str(), &statbuf) != 0 || !S_ISREG(statbuf.st_mode))
+		{
+			logError("404 CGI script not found");
+			response = HttpResponse::notFound(context.getTargetServer());
+			pendingResponses[fd] = response.toString();
+			modifyPollEvents(fd, POLLOUT);
+			return;
+		}
 		log("CGI handler is starting");
 		cgiStartTime[fd] = time(NULL);
 		cgiHandler.startExecution(fd, *client, context, pollFds, clientToPipe, pipeToServer);
@@ -1178,6 +1206,13 @@ void	WebServer::handleDeleteRequest(int fd, RequestContext & context)
 	if (stat(targetPath.c_str(), &statbuf) != 0)
 	{
 		response = HttpResponse::notFound(context.getTargetServer());
+		pendingResponses[fd] = response.toString();
+		modifyPollEvents(fd, POLLOUT);
+		return;
+	}
+	if (S_ISDIR(statbuf.st_mode))
+	{
+		response = HttpResponse::forbidden(context.getTargetServer());
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
 		return;
