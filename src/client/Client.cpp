@@ -15,7 +15,11 @@ Client::Client()
 	  headersComplete(false),
 	  requestComplete(false),
 	  chunked(false),
-	  error(false)
+	  error(false),
+	  expectedChunkSize(0),
+	  readingChunkSize(true),
+	  readingChunkData(false),
+	  chunkedBody("")
 {
 }
 
@@ -37,7 +41,11 @@ Client::Client(const Client & that)
 	  headersComplete(that.headersComplete),
 	  requestComplete(that.requestComplete),
 	  chunked(that.chunked),
-	  error(that.error)
+	  error(that.error),
+	  expectedChunkSize(that.expectedChunkSize),
+	  readingChunkSize(that.readingChunkSize),
+	  readingChunkData(that.readingChunkData),
+	  chunkedBody(that.chunkedBody)
 {
 }
 
@@ -55,7 +63,11 @@ Client::Client(int fd)
 	  headersComplete(false),
 	  requestComplete(false),
 	  chunked(false),
-	  error(false)
+	  error(false),
+	  expectedChunkSize(0),
+	  readingChunkSize(true),
+	  readingChunkData(false),
+	  chunkedBody("")
 {
 }
 
@@ -77,6 +89,10 @@ Client &	Client::operator=(const Client & that)
 		requestComplete = that.requestComplete;
 		chunked = that.chunked;
 		error = that.error;
+		expectedChunkSize = that.expectedChunkSize;
+		readingChunkSize = that.readingChunkSize;
+		readingChunkData = that.readingChunkData;
+		chunkedBody = that.chunkedBody;
 	}
 	return (*this);
 }
@@ -196,6 +212,7 @@ void	Client::parseRequest()
 	size_t		lineEnd;
 	size_t		pos;
 
+	log("request is being parsed");
 	if (headersComplete)
 	{
 		extractBody();
@@ -244,7 +261,18 @@ void	Client::resetForNextRequest()
 	requestComplete = false;
 	chunked = false;
 	error = false;
+	expectedChunkSize = 0;
+	readingChunkSize = true;
+	readingChunkData = false;
+	chunkedBody.clear();
 	resetParseState();
+}
+
+const std::string &	Client::getUnchunkedBody() const
+{
+	if (chunkedBody.empty())
+		return (body);
+	return (chunkedBody);
 }
 
 /**
@@ -295,6 +323,7 @@ void	Client::parseHeaderLine(const std::string & line)
 	std::string	value;
 	size_t		colonPos;
 
+	log(std::string("parsing header line: ") + line);
 	colonPos = line.find(':');
 	if (colonPos == std::string::npos)
 	{
@@ -340,6 +369,7 @@ void	Client::extractBody()
 	std::string			remaining;
 	size_t				headerEnd;
 
+	log("request body is being parsed");
 	if (requestComplete)
 		return;
 	headerEnd = buffer.find(WebServ::CRLF + WebServ::CRLF);
@@ -348,16 +378,12 @@ void	Client::extractBody()
 	remaining = buffer.substr(headerEnd + 4);
 	if (chunked)
 	{
-		if (remaining.size() > maxBodySize)
-		{
-			logError("chunked body is greater than max body size");
-			error = true;
-			return;
-		}
-		body = remaining;
-		requestComplete = true;
+		log("request body is chunked");
+		parseChunkedBody();
 		return;
 	}
+	else
+		log("request body is not chunked");
 	if (contentLength > 0)
 	{
 		if (contentLength > maxBodySize)
@@ -376,6 +402,7 @@ void	Client::extractBody()
 	}
 	else
 		requestComplete = true;
+	log("request parsing complete");
 }
 
 bool	Client::isValidMethod(const std::string & method) const
@@ -437,4 +464,133 @@ void	Client::resetParseState()
 	}
 	else
 		buffer = remaining;
+}
+
+void	Client::parseChunkedBody()
+{
+	std::ostringstream	stream;
+	std::string			chunkData;
+	std::string			remaining;
+	std::string			line;
+	size_t				headerEnd;
+	size_t				lineEnd;
+	size_t				pos;
+
+	log("chunked body is being parsed");
+	if (requestComplete)
+		return;
+	headerEnd = buffer.find(WebServ::CRLF + WebServ::CRLF);
+	if (headerEnd == std::string::npos)
+		return;
+	remaining = buffer.substr(headerEnd + 4);
+	if (remaining.empty())
+		return;
+	pos = 0;
+	while (pos < remaining.length())
+	{
+		if (readingChunkSize)
+		{
+			lineEnd = remaining.find(WebServ::CRLF, pos);
+			if (lineEnd == std::string::npos)
+				break;
+			line = remaining.substr(pos, lineEnd - pos);
+			decodeChunkSize(line);
+			readingChunkSize = false;
+			pos = lineEnd + 2;
+			if (expectedChunkSize == 0)
+			{
+				log("chunked request parsing complete");
+				requestComplete = true;
+				body = chunkedBody;
+				readingChunkSize = true;
+				readingChunkData = false;
+				chunkedBody.clear();
+				return;
+			}
+			readingChunkData = true;
+		}
+		if (readingChunkData)
+		{
+			if (pos + expectedChunkSize + 2 > remaining.length())
+				break;
+			chunkData = remaining.substr(pos, expectedChunkSize);
+			stream << "read chunk data: " << chunkData;
+			log(stream.str());
+			chunkedBody += chunkData;
+			pos += expectedChunkSize;
+			if (pos + 2 <= remaining.length() && remaining.substr(pos, 2) == WebServ::CRLF)
+				pos += 2;
+			else
+				break;
+			readingChunkSize = true;
+			readingChunkData = false;
+		}
+	}
+	if (requestComplete)
+		return;
+	if (chunkedBody.size() > maxBodySize)
+	{
+		stream.str("");
+		stream.clear();
+		stream << "chunked body size " << chunkedBody.size() 
+			<< " is greater than max body size " << maxBodySize;
+		logError(stream.str());
+		error = true;
+	}
+}
+
+std::string	Client::decodeChunkSize(const std::string & line)
+{
+	std::ostringstream	stream;
+	std::string			hexPart;
+	size_t				i;
+	size_t				size;
+	size_t				pos;
+
+	i = 0;
+	while (i < line.length() && isHexDigit(line[i]))
+	{
+		hexPart += line[i];
+		++i;
+	}
+	size = 0;
+	i = 0;
+	while (i < hexPart.length())
+	{
+		size = size * 16 + hexToInt(hexPart[i]);
+		++i;
+	}
+	expectedChunkSize = size;
+	stream << "decoded chunk size " << expectedChunkSize;
+	log(stream.str());
+	pos = line.find(';');
+	if (pos != std::string::npos)
+		return (line.substr(0, pos));
+	return (line);
+}
+
+bool	Client::isHexDigit(char c) const
+{
+	if (c >= '0' && c <= '9')
+		return (true);
+	if (c >= 'a' && c <= 'f')
+		return (true);
+	if (c >= 'A' && c <= 'F')
+		return (true);
+	return (false);
+}
+
+int	Client::hexToInt(char c) const
+{
+	int	result;
+
+	if (c >= '0' && c <= '9')
+		result = (c - '0');
+	else if (c >= 'a' && c <= 'f')
+		result = (c - 'a' + 10);
+	else if (c >= 'A' && c <= 'F')
+		result = (c - 'A' + 10);
+	else
+		result = 0;
+	return (result);
 }

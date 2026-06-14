@@ -22,6 +22,10 @@ private:
 	bool								requestComplete;
 	bool								chunked;
 	bool								error;
+	size_t								expectedChunkSize;
+	bool								readingChunkSize;
+	bool								readingChunkData;
+	std::string							chunkedBody;
 
 	void										parseRequestLine(const std::string & line);
 	void										parseHeaderLine(const std::string & line);
@@ -30,6 +34,10 @@ private:
 	bool										isValidMethod(const std::string & method) const;
 	bool										isValidVersion(const std::string & version) const;
 	void										resetParseState();
+	void										parseChunkedBody();
+	std::string									decodeChunkSize(const std::string & line);
+	bool										isHexDigit(char c) const;
+	int											hexToInt(char c) const;
 
 public:
 
@@ -63,6 +71,7 @@ public:
 
 	void										parseRequest();
 	void										resetForNextRequest();
+	const std::string &							getUnchunkedBody() const;
 };
 
 #endif

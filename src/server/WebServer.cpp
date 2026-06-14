@@ -1035,7 +1035,7 @@ void	WebServer::handlePostRequest(int fd, RequestContext & context, Client & cli
 		modifyPollEvents(fd, POLLOUT);
 		return;
 	}
-	file.write(client.getBody().c_str(), client.getBody().size());
+	file.write(client.getUnchunkedBody().c_str(), client.getUnchunkedBody().size());
 	file.close();
 	response = HttpResponse::created(uploadPath);
 	pendingResponses[fd] = response.toString();

@@ -86,7 +86,7 @@ std::map<std::string, std::string>	CgiHandler::buildEnv(const Client & client, c
 		env[WebServ::CGI_SERVER_NAME] = WebServ::SERVER_NAME;
 	env[WebServ::CGI_GATEWAY_INTERFACE] = WebServ::GATEWAY_INT;
 	env[WebServ::CGI_REDIRECT_STATUS] = WebServ::PHP_REDIRECT;
-	contentLengthStream << client.getBody().size();
+	contentLengthStream << client.getUnchunkedBody().size();
 	env[WebServ::CGI_CONTENT_LENGTH] = contentLengthStream.str();
 	if (client.getHeaders().find("Content-Type") != client.getHeaders().end())
 		env[WebServ::CGI_CONTENT_TYPE] = client.getHeaders().find("Content-Type")->second;
@@ -363,7 +363,7 @@ void	CgiHandler::startExecution(int clientFd, const Client & client, const Reque
 	close(pipeStdout[1]);
 	stdinWriteFd = pipeStdin[1];
 	stdoutReadFd = pipeStdout[0];
-	write(stdinWriteFd, client.getBody().c_str(), client.getBody().size());
+	write(stdinWriteFd, client.getUnchunkedBody().c_str(), client.getUnchunkedBody().size());
 	close(stdinWriteFd);
 	log("parent is adding read-end of non-blocking pipe to FD list of poll()");
 	fcntl(stdoutReadFd, F_SETFL, O_NONBLOCK);
