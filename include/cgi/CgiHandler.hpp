@@ -19,6 +19,7 @@ private:
 	std::string				output;
 	const ServerConfig *	serverConfig;
 	bool					isActive;
+	size_t					startTime;
 
 	std::map<std::string, std::string>	buildEnv(const Client & client, const RequestContext & context, const std::string & scriptPath) const;
 	std::string							extractScriptPath(const RequestContext & context) const;
@@ -34,9 +35,10 @@ public:
 	CgiHandler & operator=(const CgiHandler & that);
 
 	void	startExecution(int clientFd, const Client & client, const RequestContext & context, std::vector<struct pollfd> & pollFds, std::map<int, int> & clientToPipe, std::map<int, const ServerConfig *> & pipeToServer);
-	int		handlePipeOutput(int pipeFd, std::map<int, std::string> & pendingResponses, std::vector<struct pollfd> & pollFds, std::map<int, int> & clientToPipe, std::map<int, const ServerConfig *> & pipeToServer);
+	int		handlePipeOutput(int pipeFd, bool timedOut, std::map<int, std::string> & pendingResponses, std::vector<struct pollfd> & pollFds, std::map<int, int> & clientToPipe, std::map<int, const ServerConfig *> & pipeToServer);
 	bool	isCgiRequest(const RequestContext & context) const;
 	bool	hasActiveCgi() const;
+	void	killChild();
 };
 
 #endif

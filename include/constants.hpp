@@ -52,7 +52,7 @@ namespace WebServ
 	const std::string	WS_LOG_ERR = "[error]";
 
 	const int			CGI_BUFFER = 4096;
-	const int			CGI_TIMEOUT = 30000;
+	const int			CGI_TIMEOUT = 30;
 	const int			CONNECTION_BACKLOG = 128;
 	const int			DEFAULT_PORT = 8080;
 	const size_t		MAX_BODY_SIZE = 1048576;

@@ -24,6 +24,8 @@ private:
 	CgiHandler							cgiHandler;
 	std::map<int, int>					clientToPipe;
 	std::map<int, const ServerConfig *>	pipeToServer;
+	std::map<int, time_t>				cgiStartTime;
+	std::map<int, int>					cgiPipeToClient;
 
 	void		addToPoll(int fd, short events);
 	void		removeFromPoll(int fd);
@@ -39,6 +41,7 @@ private:
 	void		removeClient(int fd);
 	void		cleanupRemovedClients();
 	void		cleanupRemovedPipes();
+	void		checkTimeout();
 	void		modifyPollEvents(int fd, short events);
  
 	void		buildRequestContext(int clientFd, RequestContext & context);

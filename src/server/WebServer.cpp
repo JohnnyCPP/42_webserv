@@ -13,7 +13,9 @@ WebServer::WebServer()
 	  running(false),
 	  cgiHandler(),
 	  clientToPipe(),
-	  pipeToServer()
+	  pipeToServer(),
+	  cgiStartTime(),
+	  cgiPipeToClient()
 {
 }
 
@@ -32,7 +34,9 @@ WebServer::WebServer(const WebServer & that)
 	  running(that.running),
 	  cgiHandler(that.cgiHandler),
 	  clientToPipe(that.clientToPipe),
-	  pipeToServer(that.pipeToServer)
+	  pipeToServer(that.pipeToServer),
+	  cgiStartTime(that.cgiStartTime),
+	  cgiPipeToClient(that.cgiPipeToClient)
 {
 }
 
@@ -46,7 +50,9 @@ WebServer::WebServer(const Config & config)
 	  running(false),
 	  cgiHandler(),
 	  clientToPipe(),
-	  pipeToServer()
+	  pipeToServer(),
+	  cgiStartTime(),
+	  cgiPipeToClient()
 {
 	const std::vector<ServerConfig> &	serverConfigs = config.getServers();
 	size_t								i;
@@ -87,6 +93,8 @@ WebServer &	WebServer::operator=(const WebServer & that)
 		cgiHandler = that.cgiHandler;
 		clientToPipe = that.clientToPipe;
 		pipeToServer = that.pipeToServer;
+		cgiStartTime = that.cgiStartTime;
+		cgiPipeToClient = that.cgiPipeToClient;
 	}
 	return (*this);
 }
@@ -136,13 +144,72 @@ void	WebServer::getListeningSockets()
 	stream << "webserv is monitoring " << pollFds.size() << " listening sockets";
 }
 
+void	WebServer::checkTimeout()
+{
+	std::map<int, time_t>::iterator		startIt;
+	std::map<int, int>::iterator		pipeIt;
+	std::ostringstream					stream;
+	HttpResponse						response;
+	time_t								now;
+	time_t								startTime;
+	int									pipeFd;
+	int									clientFd;
+
+	if (cgiPipeToClient.empty())
+		return;
+	log("webserv is looking for timed out children");
+	now = time(NULL);
+	pipeIt = cgiPipeToClient.begin();
+	while (pipeIt != cgiPipeToClient.end())
+	{
+		log("iterating a CGI pipe to client");
+		pipeFd = pipeIt->first;
+		clientFd = pipeIt->second;
+		startIt = cgiStartTime.find(clientFd);
+		if (startIt == cgiStartTime.end())
+		{
+			log("CGI start time not found");
+			++pipeIt;
+			continue;
+		}
+		startTime = startIt->second;
+		stream << "start time is " << startTime << ", difference is " << (now - startTime) << ", timeout is " << WebServ::CGI_TIMEOUT;
+		log(stream.str());
+		if ((now - startTime) >= WebServ::CGI_TIMEOUT)
+		{
+			stream.str("");
+			stream.clear();
+			stream << "CGI timeout for client " << clientFd
+			       << " pipe " << pipeFd
+			       << " after " << (now - startTime) << " seconds";
+			logError(stream.str());
+			cgiHandler.killChild();
+			response = HttpResponse::internalServerError(pipeToServer[pipeFd]);
+			pendingResponses[clientFd] = response.toString();
+			close(pipeFd);
+			removeFromPoll(pipeFd);
+			pipesToRemove.push_back(pipeFd);
+			cgiStartTime.erase(clientFd);
+			pipeToServer.erase(pipeFd);
+			clientToPipe.erase(clientFd);
+			modifyPollEvents(clientFd, POLLOUT);
+			pipeIt = cgiPipeToClient.begin();
+		}
+		else
+			++pipeIt;
+	}
+}
+
 /**
  * There is data to read.
  */
 void	WebServer::handlePollIn(struct pollfd current)
 {
 	std::ostringstream	stream;
+	time_t				startTime;
+	time_t				now;
 	size_t				i;
+	bool				timedOut;
 	int					clientFd;
 	int					pipe;
 
@@ -172,9 +239,22 @@ void	WebServer::handlePollIn(struct pollfd current)
 	}
 	if (cgiHandler.hasActiveCgi() && pipeToServer.find(current.fd) != pipeToServer.end())
 	{
-		pipe = cgiHandler.handlePipeOutput(current.fd, pendingResponses, pollFds, clientToPipe, pipeToServer);
+		clientFd = cgiPipeToClient[current.fd];
+		startTime = cgiStartTime[clientFd];
+		now = time(NULL);
+		timedOut = (now - startTime) > WebServ::CGI_TIMEOUT;
+		if (timedOut)
+		{
+			stream.str("");
+			stream.clear();
+			stream << "CGI timed out for client " << clientFd << " after " << (now - startTime) << " seconds";
+			logError(stream.str());
+		}
+		pipe = cgiHandler.handlePipeOutput(current.fd, timedOut, pendingResponses, pollFds, clientToPipe, pipeToServer);
 		if (pipe != -1)
 		{
+			cgiStartTime.erase(clientFd);
+			cgiPipeToClient.erase(pipe);
 			stream.str("");
 			stream.clear();
 			stream << "webserv marked pipe " << pipe << " for removal";
@@ -266,7 +346,7 @@ void	WebServer::handlePollErr(struct pollfd current)
 	{
 			stream << "handling CGI pipe error/close for fd " << current.fd;
 			log(stream.str());
-			cgiHandler.handlePipeOutput(current.fd, pendingResponses, pollFds, clientToPipe, pipeToServer);
+			cgiHandler.handlePipeOutput(current.fd, false, pendingResponses, pollFds, clientToPipe, pipeToServer);
 			return;
 	}
 	close(current.fd);
@@ -297,6 +377,7 @@ void	WebServer::handleClientRead(int fd)
 {
 	std::map<int, Server*>::iterator	serverIt;
 	std::map<int, Client>::iterator		clientIt;
+	const ServerConfig *				errorConfig;
 	std::ostringstream					stream;
 	HttpResponse						response;
 	ssize_t								bytesRead;
@@ -337,8 +418,6 @@ void	WebServer::handleClientRead(int fd)
 	}
 	if (clientIt->second.hasError())
 	{
-		const ServerConfig *	errorConfig;
-
 		stream.str("");
 		stream.clear();
 		stream << "webserv detected an error with client socket " << fd;
@@ -370,6 +449,7 @@ void	WebServer::processClientRequest(int fd)
 	std::ostringstream				stream;
 	RequestContext					context;
 	HttpResponse					response;
+	std::string						clientPath;
 	std::string						allowedHeader;
 	std::string						indexPath;
 	std::string						autoindexHTML;
@@ -386,18 +466,16 @@ void	WebServer::processClientRequest(int fd)
 	client = &clientIt->second;
 	stream << client->getMethod() << " " << client->getPath() << " " << client->getVersion();
 	log(stream.str());
+	clientPath = client->getPath();
+	if (clientPath == ".." || clientPath.find("/../") != std::string::npos
+		|| (clientPath.size() >= 3 && clientPath.compare(0, 3, "../") == 0)
+		|| (clientPath.size() >= 3 && clientPath.compare(clientPath.size() - 3, 3, "/..") == 0))
 	{
-		const std::string &	path = client->getPath();
-		if (path == ".." || path.find("/../") != std::string::npos
-			|| (path.size() >= 3 && path.compare(0, 3, "../") == 0)
-			|| (path.size() >= 3 && path.compare(path.size() - 3, 3, "/..") == 0))
-		{
-			logError("403 path traversal attempt");
-			response = HttpResponse::forbidden(context.getTargetServer());
-			pendingResponses[fd] = response.toString();
-			modifyPollEvents(fd, POLLOUT);
-			return;
-		}
+		logError("403 path traversal attempt");
+		response = HttpResponse::forbidden(context.getTargetServer());
+		pendingResponses[fd] = response.toString();
+		modifyPollEvents(fd, POLLOUT);
+		return;
 	}
 	if (client->getVersion() != WebServ::HTTP_VERSION)
 	{
@@ -428,7 +506,9 @@ void	WebServer::processClientRequest(int fd)
 	if (cgiHandler.isCgiRequest(context))
 	{
 		log("CGI handler is starting");
+		cgiStartTime[fd] = time(NULL);
 		cgiHandler.startExecution(fd, *client, context, pollFds, clientToPipe, pipeToServer);
+		cgiPipeToClient[clientToPipe[fd]] = fd;
 		return;
 	}
 	if (context.hasRedirect())
@@ -542,6 +622,8 @@ void	WebServer::removeClient(int fd)
 	std::map<int, std::string>::iterator	pendingIt;
 	std::map<int, Client>::iterator			clientIt;
 	std::map<int, Server*>::iterator		serverIt;
+	std::map<int, time_t>::iterator			timeIt;
+	std::map<int, int>::iterator			pipeIt;
 	std::ostringstream						stream;
 
 	close(fd);
@@ -554,6 +636,15 @@ void	WebServer::removeClient(int fd)
 	serverIt = clientToServer.find(fd);
 	if (serverIt != clientToServer.end())
 		clientToServer.erase(serverIt);
+	timeIt = cgiStartTime.find(fd);
+	if (timeIt != cgiStartTime.end())
+		cgiStartTime.erase(timeIt);
+	pipeIt = clientToPipe.find(fd);
+	if (pipeIt != clientToPipe.end())
+	{
+		cgiPipeToClient.erase(pipeIt->second);
+		clientToPipe.erase(pipeIt);
+	}
 	clientsToRemove.push_back(fd);
 	stream << "webserv marked client socket " << fd << " for removal";
 	log(stream.str());
@@ -1091,13 +1182,6 @@ void	WebServer::handleDeleteRequest(int fd, RequestContext & context)
 		modifyPollEvents(fd, POLLOUT);
 		return;
 	}
-	if (S_ISDIR(statbuf.st_mode))
-	{
-		response = HttpResponse::forbidden(context.getTargetServer());
-		pendingResponses[fd] = response.toString();
-		modifyPollEvents(fd, POLLOUT);
-		return;
-	}
 	if (access(targetPath.c_str(), W_OK) != 0)
 	{
 		response = HttpResponse::forbidden(context.getTargetServer());
@@ -1147,8 +1231,9 @@ void	WebServer::run()
 	{
 		cleanupRemovedClients();
 		cleanupRemovedPipes();
+		checkTimeout();
 		log("webserv is executing poll()");
-		readyFds = poll(&pollFds[0], pollFds.size(), -1);
+		readyFds = poll(&pollFds[0], pollFds.size(), WebServ::CGI_TIMEOUT * 1000);
 		if (readyFds == -1)
 		{
 			if (errno == EINTR && !g_running)

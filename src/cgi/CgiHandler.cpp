@@ -9,7 +9,8 @@ CgiHandler::CgiHandler()
 	  clientFd(-1),
 	  output(""),
 	  serverConfig(NULL),
-	  isActive(false)
+	  isActive(false),
+	  startTime(0)
 {
 }
 
@@ -20,7 +21,8 @@ CgiHandler::CgiHandler(const CgiHandler & that)
 	  clientFd(that.clientFd),
 	  output(that.output),
 	  serverConfig(that.serverConfig),
-	  isActive(that.isActive)
+	  isActive(that.isActive),
+	  startTime(that.startTime)
 {
 }
 
@@ -41,6 +43,7 @@ CgiHandler & CgiHandler::operator=(const CgiHandler & that)
 		output = that.output;
 		serverConfig = that.serverConfig;
 		isActive = that.isActive;
+		startTime = that.startTime;
 	}
 	return (*this);
 }
@@ -278,6 +281,18 @@ void	CgiHandler::cleanup()
 	isActive = false;
 }
 
+void	CgiHandler::killChild()
+{
+	if (pid != -1)
+	{
+		kill(pid, SIGTERM);
+		usleep(50000);
+		kill(pid, SIGKILL);
+		waitpid(pid, NULL, WNOHANG);
+		pid = -1;
+	}
+}
+
 void	CgiHandler::startExecution(int clientFd, const Client & client, const RequestContext & context, std::vector<struct pollfd> & pollFds, std::map<int, int> & clientToPipe, std::map<int, const ServerConfig *> & pipeToServer)
 {
 	std::map<std::string, std::string>::const_iterator	envIt;
@@ -288,6 +303,7 @@ void	CgiHandler::startExecution(int clientFd, const Client & client, const Reque
 	struct pollfd										newPollFd;
 	std::string											scriptPath;
 	std::string											interpreter;
+	ssize_t												written;
 	size_t												envIndex;
 	pid_t												pid;
 	char **												envArray;
@@ -296,6 +312,7 @@ void	CgiHandler::startExecution(int clientFd, const Client & client, const Reque
 	int													pipeStdout[2];
 	int													stdinWriteFd;
 	int													stdoutReadFd;
+	int													flags;
 
 	if (isActive)
 	{
@@ -363,16 +380,26 @@ void	CgiHandler::startExecution(int clientFd, const Client & client, const Reque
 	close(pipeStdout[1]);
 	stdinWriteFd = pipeStdin[1];
 	stdoutReadFd = pipeStdout[0];
-	write(stdinWriteFd, client.getUnchunkedBody().c_str(), client.getUnchunkedBody().size());
+	flags = fcntl(stdoutReadFd, F_GETFL, 0);
+	fcntl(stdoutReadFd, F_SETFL, flags | O_NONBLOCK);
+	written = write(stdinWriteFd, client.getUnchunkedBody().c_str(), client.getUnchunkedBody().size());
+	if (written == -1)
+	{
+		logError("write() to CGI stdin failed");
+		close(stdinWriteFd);
+		close(stdoutReadFd);
+		kill(pid, SIGTERM);
+		return;
+	}
 	close(stdinWriteFd);
 	log("parent is adding read-end of non-blocking pipe to FD list of poll()");
-	fcntl(stdoutReadFd, F_SETFL, O_NONBLOCK);
 	this->pid = pid;
 	this->pipeStdin = -1;
 	this->pipeStdout = stdoutReadFd;
 	this->clientFd = clientFd;
 	this->serverConfig = context.getTargetServer();
 	this->isActive = true;
+	this->startTime = time(NULL);
 	pipeToServer[stdoutReadFd] = this->serverConfig;
 	newPollFd.fd = stdoutReadFd;
 	newPollFd.events = POLLIN;
@@ -385,7 +412,7 @@ void	CgiHandler::startExecution(int clientFd, const Client & client, const Reque
 	log(stream.str());
 }
 
-int	CgiHandler::handlePipeOutput(int pipeFd, std::map<int, std::string> & pendingResponses, std::vector<struct pollfd> & pollFds, std::map<int, int> & clientToPipe, std::map<int, const ServerConfig *> & pipeToServer)
+int	CgiHandler::handlePipeOutput(int pipeFd, bool timedOut, std::map<int, std::string> & pendingResponses, std::vector<struct pollfd> & pollFds, std::map<int, int> & clientToPipe, std::map<int, const ServerConfig *> & pipeToServer)
 {
 	std::ostringstream	stream;
 	HttpResponse		response;
@@ -400,6 +427,32 @@ int	CgiHandler::handlePipeOutput(int pipeFd, std::map<int, std::string> & pendin
 		return (-1);
 	stream << "CGI reading from client " << clientFd << " pipe " << pipeFd;
 	log(stream.str());
+	if (timedOut)
+	{
+		stream.str("");
+		stream.clear();
+		stream << "CGI timeout for client " << clientFd << ", killing child " << pid;
+		logError(stream.str());
+		killChild();
+		response = HttpResponse::internalServerError(serverConfig);
+		pendingResponses[clientFd] = response.toString();
+		pipeToRemove = pipeStdout;
+		close(pipeStdout);
+		clientToPipe.erase(clientFd);
+		pipeToServer.erase(pipeStdout);
+		cleanup();
+		i = 0;
+		while (i < pollFds.size())
+		{
+			if (pollFds[i].fd == clientFd)
+			{
+				pollFds[i].events = POLLOUT;
+				break;
+			}
+			++i;
+		}
+		return (pipeToRemove);
+	}
 	while (true)
 	{
 		bytesRead = read(pipeStdout, buffer, sizeof(buffer) - 1);
@@ -420,42 +473,43 @@ int	CgiHandler::handlePipeOutput(int pipeFd, std::map<int, std::string> & pendin
 		else if (bytesRead == -1)
 			break;
 	}
-	pipeToRemove = pipeStdout;
-	close(pipeStdout);
 	waitResult = waitpid(pid, &status, WNOHANG);
-	if (waitResult == 0)
+	if (waitResult > 0 || (waitResult == 0 && output.empty() && bytesRead == 0))
 	{
-		usleep(50000);
-		waitpid(pid, &status, WNOHANG);
-	}
-	if (WIFEXITED(status) && WEXITSTATUS(status) != 0)
-	{
-		stream.str("");
-		stream.clear();
-		stream << "CGI script exited with status " << WEXITSTATUS(status);
-		logError(stream.str());
-	}
-	parseCgiOutput(output, response);
-	pendingResponses[clientFd] = response.toString();
-	log("added CGI output to pending responses");
-	i = 0;
-	while (i < pollFds.size())
-	{
+		if (waitResult == 0 && output.empty() && bytesRead == 0)
+			killChild();
+		if (WIFEXITED(status) && WEXITSTATUS(status) != 0)
+		{
+			stream.str("");
+			stream.clear();
+			stream << "CGI script exited with status " << WEXITSTATUS(status);
+			logError(stream.str());
+		}
+		parseCgiOutput(output, response);
+		pendingResponses[clientFd] = response.toString();
+		log("added CGI output to pending responses");
+		pipeToRemove = pipeStdout;
+		close(pipeStdout);
+		clientToPipe.erase(clientFd);
+		pipeToServer.erase(pipeStdout);
+		cleanup();
+		i = 0;
+		while (i < pollFds.size())
+		{
 			if (pollFds[i].fd == clientFd)
 			{
-					pollFds[i].events = POLLOUT;
-					break;
+				pollFds[i].events = POLLOUT;
+				break;
 			}
 			++i;
+		}
+		stream.str("");
+		stream.clear();
+		stream << "CGI completed for client " << clientFd << " pipe " << pipeFd;
+		log(stream.str());
+		return (pipeToRemove);
 	}
-	stream.str("");
-	stream.clear();
-	stream << "CGI completed for client " << clientFd << " pipe " << pipeFd;
-	log(stream.str());
-	clientToPipe.erase(clientFd);
-	pipeToServer.erase(pipeStdout);
-	cleanup();
-	return (pipeToRemove);
+	return (-1);
 }
 
 bool	CgiHandler::isCgiRequest(const RequestContext & context) const
