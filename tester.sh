@@ -143,8 +143,9 @@ t  "POST works (upload -> 201)"         201 "" -X POST --data-binary "@$TMP_UP" 
 printf 'delete me\n' > "$SITE_FILES/__deltest.txt"
 t  "DELETE works on an existing file -> 204"  204 "" -X DELETE "http://$HOST:$PORT/data/files/__deltest.txt"
 t  "the DELETEd file is now gone -> 404"      404 ""           "http://$HOST:$PORT/data/files/__deltest.txt"
+t  "DELETE on a directory -> 403"             403 "" -X DELETE "http://$HOST:$PORT/data/"
 
-t  "UNKNOWN method does not crash (PUT -> 405)" 405 "" -X PUT "http://$HOST:$PORT/"
+t  "UNKNOWN method does not crash (PUT -> 501)" 501 "" -X PUT "http://$HOST:$PORT/"
 
 UPNAME="roundtrip_$$.txt"
 printf 'round-trip payload %s\n' "$$" > "$TMP_UP"
@@ -216,6 +217,7 @@ t  "server still responds after a hanging CGI (no hang)" 200 "WEBSERV" "http://$
 
 section "F. Robustness"
 
+traw "path traversal is blocked -> 403"   403 'GET /../../../etc/passwd HTTP/1.1\r\nHost: localhost\r\n\r\n'
 traw "malformed URI characters -> 400"    400 'GET /a>{} HTTP/1.1\r\nHost: localhost\r\n\r\n'
 traw "URI not starting with '/' -> 400"   400 'GET index.html HTTP/1.1\r\nHost: localhost\r\n\r\n'
 traw "garbage request line -> 400"        400 'GARBAGE NONSENSE\r\n\r\n'

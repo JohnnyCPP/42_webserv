@@ -337,15 +337,21 @@ void	WebServer::handleClientRead(int fd)
 	}
 	if (clientIt->second.hasError())
 	{
+		const ServerConfig *	errorConfig;
+
 		stream.str("");
 		stream.clear();
 		stream << "webserv detected an error with client socket " << fd;
 		logError(stream.str());
 		serverIt = clientToServer.find(fd);
 		if (serverIt != clientToServer.end())
-			response = HttpResponse::badRequest(&(serverIt->second->getConfig()));
+			errorConfig = &(serverIt->second->getConfig());
 		else
-			response = HttpResponse::badRequest(NULL);
+			errorConfig = NULL;
+		if (clientIt->second.isBodySizeExceeded())
+			response = HttpResponse::payloadTooLarge(errorConfig);
+		else
+			response = HttpResponse::badRequest(errorConfig);
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
 		return;
@@ -380,6 +386,19 @@ void	WebServer::processClientRequest(int fd)
 	client = &clientIt->second;
 	stream << client->getMethod() << " " << client->getPath() << " " << client->getVersion();
 	log(stream.str());
+	{
+		const std::string &	path = client->getPath();
+		if (path == ".." || path.find("/../") != std::string::npos
+			|| (path.size() >= 3 && path.compare(0, 3, "../") == 0)
+			|| (path.size() >= 3 && path.compare(path.size() - 3, 3, "/..") == 0))
+		{
+			logError("403 path traversal attempt");
+			response = HttpResponse::forbidden(context.getTargetServer());
+			pendingResponses[fd] = response.toString();
+			modifyPollEvents(fd, POLLOUT);
+			return;
+		}
+	}
 	if (client->getVersion() != WebServ::HTTP_VERSION)
 	{
 		logError("505 version not supported");
@@ -1068,6 +1087,13 @@ void	WebServer::handleDeleteRequest(int fd, RequestContext & context)
 	if (stat(targetPath.c_str(), &statbuf) != 0)
 	{
 		response = HttpResponse::notFound(context.getTargetServer());
+		pendingResponses[fd] = response.toString();
+		modifyPollEvents(fd, POLLOUT);
+		return;
+	}
+	if (S_ISDIR(statbuf.st_mode))
+	{
+		response = HttpResponse::forbidden(context.getTargetServer());
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
 		return;
