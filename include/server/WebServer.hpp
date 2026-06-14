@@ -8,6 +8,7 @@
 # include "http/HttpResponse.hpp"
 # include "http/RequestContext.hpp"
 # include "cgi/CgiHandler.hpp"
+# include "session/SessionManager.hpp"
 
 class WebServer
 {
@@ -26,6 +27,7 @@ private:
 	std::map<int, const ServerConfig *>	pipeToServer;
 	std::map<int, time_t>				cgiStartTime;
 	std::map<int, int>					cgiPipeToClient;
+	SessionManager						sessionManager;
 
 	void		addToPoll(int fd, short events);
 	void		removeFromPoll(int fd);
@@ -61,6 +63,12 @@ private:
 	std::string	generateAllowedMethodsHeader(const RequestContext & context);
 	void		handlePostRequest(int fd, RequestContext & context, Client & client);
 	void		handleDeleteRequest(int fd, RequestContext & context);
+	void		handleSession(Client & client, HttpResponse & response);
+	std::string	getSetCookieHeader(Session * session);
+	void		handleSessionDemo(int fd, Client & client);
+	void		handleSessionDestroy(int fd, Client & client);
+	void		handleSessionApi(int fd, Client & client);
+	void		sendSessionResponse(int fd, const std::string & html, const std::string & cookieHeader);
 
 public:
 

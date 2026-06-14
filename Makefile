@@ -22,6 +22,7 @@ CONF_DIR		:= ${SRC_DIR}config/
 HTTP_DIR		:= ${SRC_DIR}http/
 LOG_DIR			:= ${SRC_DIR}log/
 SERV_DIR		:= ${SRC_DIR}server/
+SESN_DIR		:= ${SRC_DIR}session/
 
 
 CGI_SRC_FILES	:=	CgiHandler.cpp
@@ -35,6 +36,8 @@ LOG_SRC_FILES	:=	log.cpp
 ROOT_SRC_FILES	:=	main.cpp
 SERV_SRC_FILES	:=	Server.cpp \
 					WebServer.cpp
+SESN_SRC_FILES	:=	Session.cpp \
+					SessionManager.cpp
 
 CGI_SRCS		:= $(addprefix ${CGI_DIR}, ${CGI_SRC_FILES})
 CLNT_SRCS		:= $(addprefix ${CLNT_DIR}, ${CLNT_SRC_FILES})
@@ -43,6 +46,7 @@ HTTP_SRCS		:= $(addprefix ${HTTP_DIR}, ${HTTP_SRC_FILES})
 LOG_SRCS		:= $(addprefix ${LOG_DIR}, ${LOG_SRC_FILES})
 ROOT_SRCS		:= $(addprefix ${SRC_DIR}, ${ROOT_SRC_FILES})
 SERV_SRCS		:= $(addprefix ${SERV_DIR}, ${SERV_SRC_FILES})
+SESN_SRCS		:= $(addprefix ${SESN_DIR}, ${SESN_SRC_FILES})
 
 
 SRC_FILES		:=	${ROOT_SRCS} \
@@ -51,7 +55,8 @@ SRC_FILES		:=	${ROOT_SRCS} \
 					${CLNT_SRCS} \
 					${HTTP_SRCS} \
 					${LOG_SRCS} \
-					${CGI_SRCS}
+					${CGI_SRCS} \
+					${SESN_SRCS}
 
 
 # "patsubst": pattern substitution

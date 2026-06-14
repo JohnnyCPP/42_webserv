@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Session Demo</title>
+    <style>
+        body { font-family: monospace; padding: 2rem; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .info { background: #f0f0f0; padding: 1rem; border-radius: 5px; }
+        button { padding: 0.5rem 1rem; margin: 0.5rem; cursor: pointer; }
+        pre { background: #eee; padding: 1rem; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Session Management Demo</h1>
+        <div class="info">
+            <h2>Session Information</h2>
+            <p id="session-info">Loading...</p>
+            <p id="visit-count">Loading...</p>
+        </div>
+        <div>
+            <button onclick="storeData()">Store Test Data</button>
+            <button onclick="retrieveData()">Retrieve Test Data</button>
+            <button onclick="destroySession()">Destroy Session</button>
+        </div>
+        <pre id="output"></pre>
+    </div>
+    <script>
+        function updateDisplay(data) {
+            document.getElementById('output').textContent = JSON.stringify(data, null, 2);
+            if (data.session_id) {
+                document.getElementById('session-info').textContent = 'Session ID: ' + data.session_id;
+            }
+            if (data.visits) {
+                document.getElementById('visit-count').textContent = 'Visit count: ' + data.visits;
+            }
+        }
+        function fetchSession() {
+            fetch('/api/session')
+                .then(r => r.json())
+                .then(updateDisplay);
+        }
+        function storeData() {
+            fetch('/api/session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ test_key: 'Hello from session!' })
+            })
+            .then(r => r.json())
+            .then(updateDisplay);
+        }
+        function retrieveData() {
+            fetch('/api/session/data')
+                .then(r => r.json())
+                .then(updateDisplay);
+        }
+        function destroySession() {
+            fetch('/api/session', { method: 'DELETE' })
+                .then(r => r.json())
+                .then(updateDisplay);
+        }
+        fetchSession();
+    </script>
+</body>
+</html>

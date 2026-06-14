@@ -15,7 +15,8 @@ WebServer::WebServer()
 	  clientToPipe(),
 	  pipeToServer(),
 	  cgiStartTime(),
-	  cgiPipeToClient()
+	  cgiPipeToClient(),
+	  sessionManager()
 {
 }
 
@@ -36,7 +37,8 @@ WebServer::WebServer(const WebServer & that)
 	  clientToPipe(that.clientToPipe),
 	  pipeToServer(that.pipeToServer),
 	  cgiStartTime(that.cgiStartTime),
-	  cgiPipeToClient(that.cgiPipeToClient)
+	  cgiPipeToClient(that.cgiPipeToClient),
+	  sessionManager(that.sessionManager)
 {
 }
 
@@ -52,7 +54,8 @@ WebServer::WebServer(const Config & config)
 	  clientToPipe(),
 	  pipeToServer(),
 	  cgiStartTime(),
-	  cgiPipeToClient()
+	  cgiPipeToClient(),
+	  sessionManager()
 {
 	const std::vector<ServerConfig> &	serverConfigs = config.getServers();
 	size_t								i;
@@ -95,6 +98,7 @@ WebServer &	WebServer::operator=(const WebServer & that)
 		pipeToServer = that.pipeToServer;
 		cgiStartTime = that.cgiStartTime;
 		cgiPipeToClient = that.cgiPipeToClient;
+		sessionManager = that.sessionManager;
 	}
 	return (*this);
 }
@@ -448,6 +452,7 @@ void	WebServer::processClientRequest(int fd)
 	std::map<int, Client>::iterator	clientIt;
 	std::ostringstream				stream;
 	RequestContext					context;
+	unsigned char					c;
 	HttpResponse					response;
 	std::string						clientPath;
 	std::string						allowedHeader;
@@ -456,8 +461,10 @@ void	WebServer::processClientRequest(int fd)
 	std::string						requestURI;
 	struct stat						statbuf;
 	Client *						client;
+	size_t							k;
 	bool							autoindex;
 	bool							hasIndexFile;
+	bool							badPath;
 
 	clientIt = clients.find(fd);
 	if (clientIt == clients.end())
@@ -467,35 +474,30 @@ void	WebServer::processClientRequest(int fd)
 	stream << client->getMethod() << " " << client->getPath() << " " << client->getVersion();
 	log(stream.str());
 	clientPath = client->getPath();
+	badPath = clientPath.empty() || clientPath[0] != '/';
+	for (k = 0; !badPath && k < clientPath.size(); ++k)
 	{
-		bool	badPath;
-		size_t	k;
-
-		badPath = clientPath.empty() || clientPath[0] != '/';
-		for (k = 0; !badPath && k < clientPath.size(); ++k)
-		{
-			unsigned char	c = static_cast<unsigned char>(clientPath[k]);
-			if (c <= 0x20 || c == 0x7F || c == '<' || c == '>' || c == '"'
-				|| c == '{' || c == '}' || c == '|' || c == '\\' || c == '^' || c == '`')
-				badPath = true;
-		}
-		if (badPath)
-		{
-			logError("400 malformed request target");
-			response = HttpResponse::badRequest(context.getTargetServer());
-			pendingResponses[fd] = response.toString();
-			modifyPollEvents(fd, POLLOUT);
-			return;
-		}
-		if (clientPath.find("/../") != std::string::npos
-			|| (clientPath.size() >= 3 && clientPath.compare(clientPath.size() - 3, 3, "/..") == 0))
-		{
-			logError("403 path traversal attempt");
-			response = HttpResponse::forbidden(context.getTargetServer());
-			pendingResponses[fd] = response.toString();
-			modifyPollEvents(fd, POLLOUT);
-			return;
-		}
+		c = static_cast<unsigned char>(clientPath[k]);
+		if (c <= 0x20 || c == 0x7F || c == '<' || c == '>' || c == '"'
+			|| c == '{' || c == '}' || c == '|' || c == '\\' || c == '^' || c == '`')
+			badPath = true;
+	}
+	if (badPath)
+	{
+		logError("400 malformed request target");
+		response = HttpResponse::badRequest(context.getTargetServer());
+		pendingResponses[fd] = response.toString();
+		modifyPollEvents(fd, POLLOUT);
+		return;
+	}
+	if (clientPath.find("/../") != std::string::npos
+		|| (clientPath.size() >= 3 && clientPath.compare(clientPath.size() - 3, 3, "/..") == 0))
+	{
+		logError("403 path traversal attempt");
+		response = HttpResponse::forbidden(context.getTargetServer());
+		pendingResponses[fd] = response.toString();
+		modifyPollEvents(fd, POLLOUT);
+		return;
 	}
 	if (client->getVersion() != WebServ::HTTP_VERSION)
 	{
@@ -520,6 +522,21 @@ void	WebServer::processClientRequest(int fd)
 		response = HttpResponse::methodNotAllowed(allowedHeader, context.getTargetServer());
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
+		return;
+	}
+	if (client->getPath() == "/session-test" || client->getPath() == "/session-test/")
+	{
+		handleSessionDemo(fd, *client);
+		return;
+	}
+	if (client->getPath() == "/session-destroy" || client->getPath() == "/session-destroy/")
+	{
+		handleSessionDestroy(fd, *client);
+		return;
+	}
+	if (client->getPath() == "/api/session" || client->getPath() == "/api/session/")
+	{
+		handleSessionApi(fd, *client);
 		return;
 	}
 	resolveFilesystemPath(context);
@@ -1224,6 +1241,13 @@ void	WebServer::handleDeleteRequest(int fd, RequestContext & context)
 		modifyPollEvents(fd, POLLOUT);
 		return;
 	}
+	if (S_ISDIR(statbuf.st_mode))
+	{
+		response = HttpResponse::forbidden(context.getTargetServer());
+		pendingResponses[fd] = response.toString();
+		modifyPollEvents(fd, POLLOUT);
+		return;
+	}
 	if (access(targetPath.c_str(), W_OK) != 0)
 	{
 		logError("403 forbidden");
@@ -1244,6 +1268,221 @@ void	WebServer::handleDeleteRequest(int fd, RequestContext & context)
 	pendingResponses[fd] = response.toString();
 	modifyPollEvents(fd, POLLOUT);
 	log(std::string("deleted file ") + targetPath);
+}
+
+void	WebServer::sendSessionResponse(int fd, const std::string & html, const std::string & cookieHeader)
+{
+	HttpResponse	response;
+
+	response.setStatus(200);
+	response.setHeader("Content-Type", "text/html");
+	if (!cookieHeader.empty())
+		response.setHeader("Set-Cookie", cookieHeader);
+	response.setBody(html);
+	pendingResponses[fd] = response.toString();
+	modifyPollEvents(fd, POLLOUT);
+}
+
+void	WebServer::handleSessionDemo(int fd, Client & client)
+{
+	std::ostringstream	counter;
+	std::string			setCookieHeader;
+	std::string			cookieHeader;
+	std::string			visitCount;
+	std::string			sessionId;
+	std::string			html;
+	Session *			session;
+
+	cookieHeader = "";
+	if (client.getHeaders().find("Cookie") != client.getHeaders().end())
+		cookieHeader = client.getHeaders().find("Cookie")->second;
+	sessionId = sessionManager.extractSessionIdFromCookie(cookieHeader);
+	if (sessionId.empty())
+	{
+		sessionId = sessionManager.createSession();
+		session = sessionManager.getSession(sessionId);
+		sessionManager.addSessionData(sessionId, "visits", "1");
+		setCookieHeader = "session_id=" + sessionId + "; Path=/; HttpOnly";
+		visitCount = "1";
+		log(std::string("new session created: ") + sessionId);
+	}
+	else
+	{
+		session = sessionManager.getSession(sessionId);
+		if (session == NULL)
+		{
+			sessionId = sessionManager.createSession();
+			session = sessionManager.getSession(sessionId);
+			sessionManager.addSessionData(sessionId, "visits", "1");
+			setCookieHeader = "session_id=" + sessionId + "; Path=/; HttpOnly";
+			visitCount = "1";
+			log(std::string("expired session replaced: ") + sessionId);
+		}
+		else
+		{
+			visitCount = sessionManager.getSessionData(sessionId, "visits");
+			if (visitCount.empty())
+				visitCount = "0";
+			counter << (std::atoi(visitCount.c_str()) + 1);
+			sessionManager.addSessionData(sessionId, "visits", counter.str());
+			visitCount = counter.str();
+			log(std::string("session ") + sessionId + " visit count: " + visitCount);
+		}
+	}
+	html = "<!DOCTYPE html>\n";
+	html += "<html>\n<head>\n<title>Session Demo</title>\n</head>\n<body>\n";
+	html += "<h1>Session Demo</h1>\n";
+	html += "<p><strong>Session ID:</strong> " + sessionId + "</p>\n";
+	html += "<p><strong>Visit Count:</strong> " + visitCount + "</p>\n";
+	html += "<hr>\n";
+	html += "<a href='/session-test'>Refresh (increment visit count)</a><br>\n";
+	html += "<a href='/session-destroy'>Destroy Session</a><br>\n";
+	html += "<a href='/session/demo.html'>Go to Static Session Page</a>\n";
+	html += "</body>\n</html>\n";
+	sendSessionResponse(fd, html, setCookieHeader);
+}
+
+void	WebServer::handleSessionDestroy(int fd, Client & client)
+{
+	std::string	cookieHeader;
+	std::string	sessionId;
+	std::string	html;
+
+	cookieHeader = "";
+	if (client.getHeaders().find("Cookie") != client.getHeaders().end())
+		cookieHeader = client.getHeaders().find("Cookie")->second;
+	sessionId = sessionManager.extractSessionIdFromCookie(cookieHeader);
+	if (!sessionId.empty())
+		sessionManager.destroySession(sessionId);
+	html = "<!DOCTYPE html>\n";
+	html += "<html>\n<head>\n<title>Session Destroyed</title>\n</head>\n<body>\n";
+	html += "<h1>Session Destroyed</h1>\n";
+	html += "<p>Your session has been destroyed.</p>\n";
+	html += "<a href='/session-test'>Create New Session</a>\n";
+	html += "</body>\n</html>\n";
+	sendSessionResponse(fd, html, "session_id=; Path=/; Max-Age=0");
+}
+
+void	WebServer::handleSessionApi(int fd, Client & client)
+{
+	HttpResponse	response;
+	std::string		cookieHeader;
+	std::string		sessionId;
+	std::string		responseBody;
+	std::string		setCookieHeader;
+	std::string		visits;
+	std::string		stored;
+	Session *		session;
+
+	cookieHeader = "";
+	if (client.getHeaders().find("Cookie") != client.getHeaders().end())
+		cookieHeader = client.getHeaders().find("Cookie")->second;
+	sessionId = sessionManager.extractSessionIdFromCookie(cookieHeader);
+	if (client.getMethod() == "DELETE")
+	{
+		if (!sessionId.empty())
+			sessionManager.destroySession(sessionId);
+		response.setStatus(200);
+		response.setHeader("Set-Cookie", "session_id=; Path=/; Max-Age=0");
+		response.setHeader("Content-Type", "application/json");
+		response.setBody("{\"status\": \"session destroyed\"}");
+		pendingResponses[fd] = response.toString();
+		modifyPollEvents(fd, POLLOUT);
+		return;
+	}
+	if (sessionId.empty())
+	{
+		sessionId = sessionManager.createSession();
+		session = sessionManager.getSession(sessionId);
+		sessionManager.addSessionData(sessionId, "visits", "1");
+		setCookieHeader = "session_id=" + sessionId + "; Path=/; HttpOnly";
+	}
+	else
+	{
+		session = sessionManager.getSession(sessionId);
+		if (session == NULL)
+		{
+			sessionId = sessionManager.createSession();
+			session = sessionManager.getSession(sessionId);
+			sessionManager.addSessionData(sessionId, "visits", "1");
+			setCookieHeader = "session_id=" + sessionId + "; Path=/; HttpOnly";
+		}
+		else
+			setCookieHeader = "";
+	}
+	response.setStatus(200);
+	if (!setCookieHeader.empty())
+		response.setHeader("Set-Cookie", setCookieHeader);
+	response.setHeader("Content-Type", "application/json");
+	if (client.getMethod() == "POST")
+	{
+		sessionManager.addSessionData(sessionId, "stored_data", client.getBody());
+		responseBody = "{\"status\": \"data stored\", \"session_id\": \"" + sessionId + "\"}";
+	}
+	else
+	{
+		visits = sessionManager.getSessionData(sessionId, "visits");
+		stored = sessionManager.getSessionData(sessionId, "stored_data");
+		responseBody = "{\"session_id\": \"" + sessionId + "\", \"visits\": " + visits + ", \"stored_data\": \"" + stored + "\"}";
+	}
+	response.setBody(responseBody);
+	pendingResponses[fd] = response.toString();
+	modifyPollEvents(fd, POLLOUT);
+}
+
+std::string	WebServer::getSetCookieHeader(Session * session)
+{
+	std::ostringstream	stream;
+
+	if (session == NULL)
+		return ("");
+	stream << "session_id=" << session->id << "; Path=/; HttpOnly";
+	return (stream.str());
+}
+
+void	WebServer::handleSession(Client & client, HttpResponse & response)
+{
+	std::map<std::string, std::string>::const_iterator	it;
+	std::ostringstream									counter;
+	std::string											cookieHeader;
+	std::string											sessionId;
+	std::string											visitCount;
+	Session *											session;
+
+	it = client.getHeaders().find("Cookie");
+	if (it != client.getHeaders().end())
+		cookieHeader = it->second;
+	if (!cookieHeader.empty())
+		sessionId = sessionManager.extractSessionIdFromCookie(cookieHeader);
+	if (sessionId.empty())
+	{
+		sessionId = sessionManager.createSession();
+		session = sessionManager.getSession(sessionId);
+		sessionManager.addSessionData(sessionId, "visits", "1");
+		response.setHeader("Set-Cookie", getSetCookieHeader(session));
+		log(std::string("new session created: ") + sessionId);
+	}
+	else
+	{
+		session = sessionManager.getSession(sessionId);
+		if (session == NULL)
+		{
+			sessionId = sessionManager.createSession();
+			session = sessionManager.getSession(sessionId);
+			sessionManager.addSessionData(sessionId, "visits", "1");
+			response.setHeader("Set-Cookie", getSetCookieHeader(session));
+			log(std::string("expired session, new session created: ") + sessionId);
+		}
+		else
+		{
+			visitCount = sessionManager.getSessionData(sessionId, "visits");
+			if (visitCount.empty())
+				visitCount = "0";
+			counter << (std::atoi(visitCount.c_str()) + 1);
+			sessionManager.addSessionData(sessionId, "visits", counter.str());
+			log(std::string("session ") + sessionId + " visit count: " + counter.str());
+		}
+	}
 }
 
 /**
