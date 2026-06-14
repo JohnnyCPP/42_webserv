@@ -212,7 +212,7 @@ void	WebServer::handlePollOut(struct pollfd current)
 	bytesSent = send(current.fd, data, remaining, 0);
 	if (bytesSent == -1)
 	{
-		logError("an error occured during a call to send()");
+		logError("an error occurred during a call to send()");
 		removeClient(current.fd);
 		return;
 	}
@@ -330,7 +330,7 @@ void	WebServer::handleClientRead(int fd)
 		}
 		else if (bytesRead == -1)
 		{
-			logError("an error occured during a call to recv()");
+			logError("an error occurred during a call to recv()");
 			removeClient(fd);
 			keepReading = false;
 		}
@@ -476,11 +476,23 @@ void	WebServer::processClientRequest(int fd)
 		}
 		else
 		{
-			logError("403 autoindex is disabled");
-			response = HttpResponse::forbidden(context.getTargetServer());
-			pendingResponses[fd] = response.toString();
-			modifyPollEvents(fd, POLLOUT);
-			return;
+			indexPath = context.getResolvedPath();
+			if (indexPath[indexPath.length() - 1] != '/')
+				indexPath += '/';
+			if (context.getMatchedLocation() != NULL && !context.getMatchedLocation()->getIndex().empty())
+				indexPath += context.getMatchedLocation()->getIndex();
+			else
+				indexPath += context.getTargetServer()->getIndex();
+			hasIndexFile = (stat(indexPath.c_str(), &statbuf) == 0 && S_ISREG(statbuf.st_mode));
+			if (!hasIndexFile)
+			{
+				log("index file not found");
+				logError("403 autoindex is disabled");
+				response = HttpResponse::forbidden(context.getTargetServer());
+				pendingResponses[fd] = response.toString();
+				modifyPollEvents(fd, POLLOUT);
+				return;
+			}
 		}
 		context.setResolvedPath(handleDirectoryPath(context));
 		if (stat(context.getResolvedPath().c_str(), &statbuf) != 0)
