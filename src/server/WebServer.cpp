@@ -525,11 +525,13 @@ void	WebServer::processClientRequest(int fd)
 	resolveFilesystemPath(context);
 	if (client->getMethod() == "POST")
 	{
+		log("webserv is handling a POST request");
 		handlePostRequest(fd, context, *client);
 		return;
 	}
 	if (client->getMethod() == "DELETE")
 	{
+		log("webserv is handling a DELETE request");
 		handleDeleteRequest(fd, context);
 		return;
 	}
@@ -1137,12 +1139,14 @@ void	WebServer::handlePostRequest(int fd, RequestContext & context, Client & cli
 
 	if (!validateBodySize(client, *(context.getTargetServer()), response))
 	{
+		logError("413 payload too large");
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
 		return;
 	}
 	if (context.getMatchedLocation() == NULL || context.getMatchedLocation()->getUploadStore().empty())
 	{
+		logError("501 not implemented");
 		response = HttpResponse::notImplemented(context.getTargetServer());
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
@@ -1152,6 +1156,7 @@ void	WebServer::handlePostRequest(int fd, RequestContext & context, Client & cli
 	file.open(uploadPath.c_str(), std::ios::out | std::ios::binary);
 	if (!file.is_open())
 	{
+		logError("500 internal server error");
 		response = HttpResponse::internalServerError(context.getTargetServer());
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
@@ -1177,13 +1182,23 @@ void	WebServer::handleDeleteRequest(int fd, RequestContext & context)
 		targetPath = context.getResolvedPath();
 	if (stat(targetPath.c_str(), &statbuf) != 0)
 	{
+		logError("404 not found");
 		response = HttpResponse::notFound(context.getTargetServer());
+		pendingResponses[fd] = response.toString();
+		modifyPollEvents(fd, POLLOUT);
+		return;
+	}
+	if (S_ISDIR(statbuf.st_mode))
+	{
+		logError("403 forbidden");
+		response = HttpResponse::forbidden(context.getTargetServer());
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
 		return;
 	}
 	if (access(targetPath.c_str(), W_OK) != 0)
 	{
+		logError("403 forbidden");
 		response = HttpResponse::forbidden(context.getTargetServer());
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
@@ -1191,6 +1206,7 @@ void	WebServer::handleDeleteRequest(int fd, RequestContext & context)
 	}
 	if (unlink(targetPath.c_str()) != 0)
 	{
+		logError("500 internal server error");
 		response = HttpResponse::internalServerError(context.getTargetServer());
 		pendingResponses[fd] = response.toString();
 		modifyPollEvents(fd, POLLOUT);
